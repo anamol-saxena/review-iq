@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReviewIQ — Universal Review Intelligence Copilot</title>
+  <meta name="description" content="Instantly synthesize hundreds of conflicting reviews into clear, actionable intelligence using Gemini AI. Works for hotels, restaurants, electronics, and e-commerce." />
+  <meta property="og:title" content="ReviewIQ — Universal Review Intelligence Copilot" />
+  <meta property="og:description" content="Cross-domain review intelligence powered by Gemini AI" />
+  <meta name="theme-color" content="#7c3aed" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- Ambient Background -->
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="bg-orb bg-orb-1" aria-hidden="true"></div>
+<div class="bg-orb bg-orb-2" aria-hidden="true"></div>
+<div class="bg-orb bg-orb-3" aria-hidden="true"></div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="modal">
+    <h2 class="modal-title" id="settingsTitle">⚙️ Configuration</h2>
+    <p class="modal-subtitle">
+      Enter your Gemini API key to enable AI analysis.
+      Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" style="color: var(--text-accent);">aistudio.google.com</a>.
+    </p>
+    <div class="form-group">
+      <label class="form-label" for="apiKeyInput">Gemini API Key</label>
+      <input
+        type="password"
+        id="apiKeyInput"
+        class="form-input"
+        placeholder="AIza..."
+        autocomplete="off"
+        spellcheck="false"
+      />
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="modelSelect">Model</label>
+      <select id="modelSelect" class="form-select">
+        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (Recommended — Fastest)</option>
+        <option value="gemini-2.0-flash">gemini-2.0-flash (Fast)</option>
+        <option value="gemini-1.5-flash">gemini-1.5-flash (Fallback)</option>
+        <option value="gemini-1.5-pro">gemini-1.5-pro (Most capable, slower)</option>
+        <option value="gemini-2.5-pro">gemini-2.5-pro (Experimental)</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" id="saveSettingsBtn">Save &amp; Close</button>
+      <button class="btn btn-ghost" id="closeSettingsBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main App -->
+<main id="app">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo-area">
+      <div class="logo-icon" aria-hidden="true">🔍</div>
+      <div class="logo-text">Review<span>IQ</span></div>
+    </div>
+    <nav class="header-actions">
+      <div id="apiKeyStatus" class="btn btn-ghost btn-sm" style="gap:6px; font-size:12px;">
+        <span id="apiKeyStatusDot" style="width:8px;height:8px;border-radius:50%;background:var(--error);flex-shrink:0;"></span>
+        <span id="apiKeyStatusText">No API Key</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="openSettingsBtn" aria-label="Open settings">
+        ⚙️ Settings
+      </button>
+    </nav>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero" aria-labelledby="heroHeading">
+    <div class="hero-badge">
+      <div class="hero-badge-dot" aria-hidden="true"></div>
+      AI Builder Cup 2026 · Powered by Gemini
+    </div>
+    <h1 id="heroHeading">
+      Stop Scrolling.<br/>
+      <span class="gradient-text">Start Deciding.</span>
+    </h1>
+    <p class="hero-description">
+      Paste reviews from any travel spot, restaurant, or product. Our Gemini-powered
+      intelligence engine synthesizes thousands of conflicting opinions into a clear,
+      honest verdict in seconds.
+    </p>
+    <div class="hero-stats" role="list">
+      <div class="hero-stat" role="listitem">
+        <div class="hero-stat-value">4</div>
+        <div class="hero-stat-label">Review Domains</div>
+      </div>
+      <div class="hero-stat" role="listitem">
+        <div class="hero-stat-value">5-Step</div>
+        <div class="hero-stat-label">Reasoning Chain</div>
+      </div>
+      <div class="hero-stat" role="listitem">
+        <div class="hero-stat-value">∞</div>
+        <div class="hero-stat-label">Review Sources</div>
+      </div>
+      <div class="hero-stat" role="listitem">
+        <div class="hero-stat-value">100%</div>
+        <div class="hero-stat-label">Contradiction-Aware</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Demo Scenarios -->
+  <div class="demo-bar">
+    <div class="demo-bar-label">⚡ Try a demo scenario</div>
+    <div class="demo-scenarios" role="list">
+      <button class="demo-chip" data-scenario="hotel_goa" role="listitem">🏨 Taj Exotica, Goa</button>
+      <button class="demo-chip" data-scenario="headphones_sony" role="listitem">🎧 Sony WH-1000XM5</button>
+      <button class="demo-chip" data-scenario="restaurant_bangalore" role="listitem">🍺 Toit Brewpub</button>
+      <button class="demo-chip" data-scenario="laptop_dell" role="listitem">💻 Dell XPS 15</button>
+      <button class="demo-chip" data-scenario="airbnb_kerala" role="listitem">🌿 Treehouse, Munnar</button>
+      <button class="demo-chip" data-scenario="watch_samsung" role="listitem">⌚ Galaxy Watch 7</button>
+    </div>
+  </div>
+
+  <!-- Input Panel -->
+  <section class="input-panel" aria-label="Review input">
+
+    <!-- Tabs -->
+    <div class="input-tabs" role="tablist" aria-label="Input method">
+      <button class="input-tab active" id="tab-paste" role="tab" aria-selected="true" aria-controls="panel-paste" data-tab="paste">
+        📋 Paste Reviews
+      </button>
+      <button class="input-tab" id="tab-url" role="tab" aria-selected="false" aria-controls="panel-url" data-tab="url">
+        🔗 From URL
+      </button>
+      <button class="input-tab" id="tab-file" role="tab" aria-selected="false" aria-controls="panel-file" data-tab="file">
+        📁 Upload File
+      </button>
+      <button class="input-tab" id="tab-demo" role="tab" aria-selected="false" aria-controls="panel-demo" data-tab="demo">
+        🎯 Demo Mode
+      </button>
+    </div>
+
+    <!-- Paste Tab -->
+    <div id="panel-paste" class="input-tab-panel active" role="tabpanel" aria-labelledby="tab-paste">
+      <div class="form-group">
+        <label class="form-label" for="reviewTextarea">
+          Paste your reviews below
+          <span style="color:var(--text-muted); font-weight:400; margin-left:6px;">
+            (separate by double newline, numbered list, or — dashes)
+          </span>
+        </label>
+        <div class="textarea-wrapper">
+          <textarea
+            id="reviewTextarea"
+            class="form-input form-textarea"
+            placeholder="Paste reviews here...&#10;&#10;Example:&#10;Great location, comfortable rooms but WiFi was slow.&#10;&#10;Staff was very helpful! The breakfast buffet was amazing. Would definitely stay again.&#10;&#10;Overpriced for what you get. The pool was crowded and service was slow."
+            spellcheck="false"
+          ></textarea>
+          <div class="char-count" id="charCount">0 chars</div>
+        </div>
+        <p style="font-size:12px; color:var(--text-muted); margin-top:6px;">
+          💡 Tip: Include dates like "2024" in the text for better recency analysis
+        </p>
+      </div>
+    </div>
+
+    <!-- URL Tab -->
+    <div id="panel-url" class="input-tab-panel" role="tabpanel" aria-labelledby="tab-url">
+      <div class="form-group">
+        <label class="form-label">Domain Type</label>
+        <div class="domain-selector">
+          <button class="domain-chip active" data-domain="ecommerce" title="Shopping / Products">🛒 E-commerce</button>
+          <button class="domain-chip" data-domain="place" title="Single place or compare places via Google Maps">📍 Place / Restaurant</button>
+        </div>
+      </div>
+      <div id="urlEcommerceSection">
+      <div class="form-group" style="margin-top:16px;">
+        <label class="form-label" for="urlInput">Review page URL</label>
+        <div class="url-input-group">
+          <input
+            type="url"
+            id="urlInput"
+            class="form-input"
+            placeholder="https://www.amazon.in/product/... or TripAdvisor, Yelp link"
+          />
+          <button class="btn btn-secondary" id="fetchUrlBtn" style="white-space:nowrap;">
+            <span id="fetchBtnText">🔍 Fetch Reviews</span>
+          </button>
+        </div>
+        <p style="font-size:12px; color:var(--text-muted); margin-top:6px;">
+          🌐 Uses a real headless browser (running locally) to fetch live reviews — bypasses CORS and most bot detection.
+          Requires the backend server to be running (see server/README).
+        </p>
+      </div>
+      <div id="urlFetchStatus" style="display:none; margin-top:12px;"></div>
+      <div id="urlFetchedPreview" style="display:none; margin-top:12px;">
+        <label class="form-label">Fetched content preview</label>
+        <textarea id="urlFetchedText" class="form-input form-textarea" style="min-height:120px;" readonly></textarea>
+      </div>
+      </div>
+
+      <!-- Place / Restaurant (SaarMind) -->
+      <div id="urlPlaceSection" style="display:none; margin-top:16px;">
+
+        <div class="sm-mode-row" id="saarmingModeRow">
+          <button class="sm-mode-btn active" id="saarmingSingleBtn" data-mode="single">🔍 Single Place</button>
+          <button class="sm-mode-btn" id="saarmingCompareBtn" data-mode="compare">⚖️ Compare Places</button>
+        </div>
+
+        <div id="saarmingSinglePanel">
+          <div class="form-group" style="margin-top:16px;">
+            <label class="form-label" for="saarmingPlaceInput">
+              Place Name
+              <span style="color:var(--text-muted); font-weight:400; margin-left:6px;">
+                (restaurant or hotel with city for best results)
+              </span>
+            </label>
+            <div class="url-input-group">
+              <input
+                type="text"
+                id="saarmingPlaceInput"
+                class="form-input"
+                placeholder="e.g. Truffles Koramangala Bangalore"
+                autocomplete="off"
+              />
+              <button class="btn btn-secondary" id="saarmingFetchBtn" style="white-space:nowrap;">
+                <span id="saarmingFetchBtnText">📍 Fetch Reviews</span>
+              </button>
+            </div>
+            <div id="saarmingDomainHint" style="font-size:12px; color:var(--text-muted); margin-top:6px;"></div>
+          </div>
+        </div>
+
+        <div id="saarmingComparePanel" style="display:none;">
+          <div class="form-group" style="margin-top:16px;">
+            <label class="form-label">Places to Compare <span style="color:var(--text-muted); font-weight:400;">(2–3 places)</span></label>
+            <input type="text" id="saarmingCompare1" class="form-input" placeholder="Place 1 — e.g. Truffles Koramangala Bangalore" style="margin-bottom:8px;" />
+            <input type="text" id="saarmingCompare2" class="form-input" placeholder="Place 2 — e.g. The Black Pearl Bangalore" style="margin-bottom:8px;" />
+            <input type="text" id="saarmingCompare3" class="form-input" placeholder="Place 3 — optional" />
+            <button class="btn btn-secondary" id="saarmingCompareBtn2" style="margin-top:12px; width:100%;">
+              <span id="saarmingCompareBtnText">⚖️ Compare All Places</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="saarmingFetchStatus" style="display:none; margin-top:12px;"></div>
+        <div id="saarmingFetchedPreview" style="display:none; margin-top:12px;">
+          <label class="form-label">Fetched reviews preview</label>
+          <textarea id="saarmingFetchedText" class="form-input form-textarea" style="min-height:100px;" readonly></textarea>
+        </div>
+
+        <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">
+          🌐 Fetches up to <strong>20 newest</strong> Google Maps reviews via Apify.
+          Requires <code>APIFY_TOKEN</code> in <code>server/.env</code> and the backend running.
+          <a href="https://console.apify.com/" target="_blank" style="color:var(--text-accent);">Get your token →</a>
+        </p>
+      </div>
+    </div>
+
+    <!-- File Tab -->
+    <div id="panel-file" class="input-tab-panel" role="tabpanel" aria-labelledby="tab-file">
+      <label class="file-upload-zone" id="fileUploadZone" for="fileInput">
+        <div class="file-upload-icon">📄</div>
+        <div class="file-upload-text">Drop your file here, or click to browse</div>
+        <div class="file-upload-hint">Supports .txt, .csv, .json (max 5MB)</div>
+        <input
+          type="file"
+          id="fileInput"
+          accept=".txt,.csv,.json"
+          aria-label="Upload review file"
+        />
+      </label>
+      <div class="file-selected" id="fileSelected">
+        <span>📎</span>
+        <span id="fileName">No file selected</span>
+        <button class="btn btn-sm btn-ghost" id="clearFileBtn" style="margin-left:auto;">✕</button>
+      </div>
+      <p style="font-size:12px; color:var(--text-muted); margin-top:8px;">
+        <strong>TXT:</strong> One review per paragraph. <strong>CSV:</strong> Column named "review" or "text". <strong>JSON:</strong> Array of {text, date, rating} objects.
+      </p>
+    </div>
+
+    <!-- Demo Tab -->
+    <div id="panel-demo" class="input-tab-panel" role="tabpanel" aria-labelledby="tab-demo">
+      <div style="margin-bottom:16px;">
+        <p style="font-size:14px; color:var(--text-secondary); line-height:1.6; margin-bottom:12px;">
+          Select a preloaded scenario with realistic multilingual reviews across different domains.
+          Perfect for live demos — no API needed for the data, only for the analysis.
+        </p>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;" id="demoGrid">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- Analyze Button -->
+    <div class="analyze-btn-wrapper">
+      <button class="btn-analyze" id="analyzeBtn" aria-label="Analyze reviews">
+        <div class="btn-spinner" aria-hidden="true"></div>
+        <span class="btn-text-content">✨ Analyze Reviews</span>
+      </button>
+    </div>
+
+  </section>
+
+  <!-- Processing Pipeline -->
+  <section class="processing-section" id="processingSection" aria-live="polite" aria-label="Analysis in progress">
+    <div class="processing-header">
+      <h2 class="processing-title">🧠 AI Reasoning Engine Running</h2>
+      <p class="processing-subtitle">5-step chain-of-thought analysis in progress...</p>
+    </div>
+    <div class="pipeline" id="pipelineSteps" role="list">
+      <div class="pipeline-step" id="step-preprocess" role="listitem">
+        <div class="pipeline-step-icon">🔍</div>
+        <div class="pipeline-step-content">
+          <div class="pipeline-step-label">Step 1 — Preprocessing</div>
+          <div class="pipeline-step-detail">Deduplication, recency tagging, language detection</div>
+          <div class="pipeline-step-progress"><div class="pipeline-step-progress-bar"></div></div>
+        </div>
+        <div class="pipeline-step-status">⏳</div>
+      </div>
+      <div class="pipeline-step" id="step-domain" role="listitem">
+        <div class="pipeline-step-icon">🧭</div>
+        <div class="pipeline-step-content">
+          <div class="pipeline-step-label">Step 2 — Domain Routing</div>
+          <div class="pipeline-step-detail">Selecting domain-specific analysis schema</div>
+          <div class="pipeline-step-progress"><div class="pipeline-step-progress-bar"></div></div>
+        </div>
+        <div class="pipeline-step-status">⏳</div>
+      </div>
+      <div class="pipeline-step" id="step-extract" role="listitem">
+        <div class="pipeline-step-icon">📝</div>
+        <div class="pipeline-step-content">
+          <div class="pipeline-step-label">Step 3 — Claim Extraction &amp; Clustering</div>
+          <div class="pipeline-step-detail">Gemini extracting atomic claims per review</div>
+          <div class="pipeline-step-progress"><div class="pipeline-step-progress-bar"></div></div>
+        </div>
+        <div class="pipeline-step-status">⏳</div>
+      </div>
+      <div class="pipeline-step" id="step-contradict" role="listitem">
+        <div class="pipeline-step-icon">⚡</div>
+        <div class="pipeline-step-content">
+          <div class="pipeline-step-label">Step 4 — Contradiction Resolution</div>
+          <div class="pipeline-step-detail">Identifying and resolving conflicting claims</div>
+          <div class="pipeline-step-progress"><div class="pipeline-step-progress-bar"></div></div>
+        </div>
+        <div class="pipeline-step-status">⏳</div>
+      </div>
+      <div class="pipeline-step" id="step-verdict" role="listitem">
+        <div class="pipeline-step-icon">🎯</div>
+        <div class="pipeline-step-content">
+          <div class="pipeline-step-label">Step 5 — Verdict Generation</div>
+          <div class="pipeline-step-detail">Weighting by recency, computing confidence, generating verdict</div>
+          <div class="pipeline-step-progress"><div class="pipeline-step-progress-bar"></div></div>
+        </div>
+        <div class="pipeline-step-status">⏳</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Error State -->
+  <div class="error-state" id="errorState" role="alert">
+    <div class="error-icon">⚠️</div>
+    <h2 class="error-title">Analysis Failed</h2>
+    <p class="error-message" id="errorMessage">An unexpected error occurred.</p>
+    <button class="btn btn-secondary" id="tryAgainBtn">↩️ Try Again</button>
+  </div>
+
+  <!-- Results Dashboard -->
+  <section class="results-section" id="resultsSection" aria-label="Analysis results">
+
+    <!-- Results Header -->
+    <div class="results-header">
+      <div class="results-subject">
+        <div class="results-subject-icon" id="resultIcon">🏷️</div>
+        <div>
+          <div class="results-subject-name" id="resultName">Analysis Results</div>
+          <div class="results-subject-meta" id="resultMeta"></div>
+        </div>
+      </div>
+      <div class="results-actions">
+        <div class="confidence-badge" id="confidenceBadge"></div>
+        <button class="btn btn-ghost btn-sm" id="copyResultsBtn" aria-label="Copy results">📋 Copy</button>
+        <button class="btn btn-ghost btn-sm" id="newAnalysisBtn" aria-label="Start new analysis">+ New</button>
+      </div>
+    </div>
+
+    <!-- Preprocessing Stats Bar -->
+    <div class="preprocessing-stats" id="preprocessingStats" role="region" aria-label="Preprocessing statistics"></div>
+
+    <!-- 4 Output Cards -->
+    <div class="cards-grid" id="cardsGrid">
+
+      <!-- Verdict Card -->
+      <article class="card card-verdict" id="verdictCard" aria-label="Verdict">
+        <div class="card-header">
+          <div class="card-icon" style="background: rgba(124,58,237,0.2);">🎯</div>
+          <div class="card-title">AI Verdict</div>
+        </div>
+        <div class="verdict-score">
+          <div class="verdict-score-value" id="overallScore">—</div>
+          <div class="verdict-score-label">/ 10</div>
+        </div>
+        <p class="verdict-summary" id="verdictSummary"></p>
+        <div class="verdict-statements">
+          <div class="verdict-choose">
+            <div class="verdict-choose-label">✅ Choose this if</div>
+            <div id="verdictChooseIf"></div>
+          </div>
+          <div class="verdict-skip">
+            <div class="verdict-skip-label">❌ Skip it if</div>
+            <div id="verdictSkipIf"></div>
+          </div>
+        </div>
+        <div class="key-insight" id="keyInsightBox" style="display:none;">
+          <div class="key-insight-label">💡 Key Insight</div>
+          <div id="keyInsightText"></div>
+        </div>
+      </article>
+
+      <!-- Pros Card -->
+      <article class="card" id="prosCard" aria-label="Top Pros">
+        <div class="card-header">
+          <div class="card-icon" style="background: rgba(16,185,129,0.2);">✅</div>
+          <div class="card-title">Top Strengths</div>
+        </div>
+        <div class="pros-cons-list" id="prosList"></div>
+      </article>
+
+      <!-- Cons Card -->
+      <article class="card" id="consCard" aria-label="Top Cons">
+        <div class="card-header">
+          <div class="card-icon" style="background: rgba(239,68,68,0.2);">❌</div>
+          <div class="card-title">Key Weaknesses</div>
+        </div>
+        <div class="pros-cons-list" id="consList"></div>
+      </article>
+
+      <!-- Thematic Breakdown Card -->
+      <article class="card card-breakdown" id="breakdownCard" aria-label="Thematic breakdown">
+        <div class="card-header">
+          <div class="card-icon" style="background: rgba(6,182,212,0.2);">📊</div>
+          <div class="card-title">Thematic Breakdown</div>
+        </div>
+        <div class="categories-grid" id="categoriesGrid"></div>
+      </article>
+
+    </div>
+
+    <!-- Contradictions Section -->
+    <div class="contradictions-section" id="contradictionsSection">
+      <h2 class="section-title">⚡ Resolved Contradictions</h2>
+      <div class="contradictions-grid" id="contradictionsGrid"></div>
+    </div>
+
+    <!-- Reasoning Chain -->
+    <div class="reasoning-section" id="reasoningSection">
+      <h2 class="section-title">🧠 Reasoning Chain</h2>
+      <div class="reasoning-steps" id="reasoningSteps"></div>
+    </div>
+
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <p>Created by team: A-Squared Maverick, India</p>
+</footer>
+
+<!-- Scripts — load order matters -->
+<script src="config.js"></script>
+<script src="demoData.js"></script>
+<script src="preprocessor.js"></script>
+<script src="domainRouter.js"></script>
+<script src="geminiClient.js"></script>
+<script src="confidenceEngine.js"></script>
+<script src="saarmingClient.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
