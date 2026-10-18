@@ -1,8 +1,10 @@
 # Secrets and Environment Variables
 .env
-.env.*
+.env.local
 server/.env
-server/.env.*
+server/.env.local
+!.env.example
+!server/.env.example
 
 # Dependencies
 node_modules/

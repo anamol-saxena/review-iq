@@ -96,12 +96,7 @@ The application includes a `Dockerfile` using the official Playwright base image
    gcloud config set project YOUR_GCP_PROJECT_ID
    ```
 
-3. **Deploy using the automated script**:
-   ```bash
-   ./deploy-gcp.sh
-   ```
-
-   Or deploy manually via `gcloud`:
+3. **Deploy to Cloud Run**:
    ```bash
    gcloud run deploy review-analyzer \
      --source . \
@@ -109,8 +104,9 @@ The application includes a `Dockerfile` using the official Playwright base image
      --allow-unauthenticated \
      --memory 2Gi \
      --cpu 2 \
-     --set-env-vars GEMINI_API_KEY="your_key",APIFY_TOKEN="your_token"
+     --set-env-vars GEMINI_API_KEY="your_gemini_key",APIFY_TOKEN="your_apify_token"
    ```
+
 
 ## Notes
 
