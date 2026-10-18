@@ -87,7 +87,7 @@
         📋 Paste Reviews
       </button>
       <button class="input-tab" id="tab-url" role="tab" aria-selected="false" aria-controls="panel-url" data-tab="url">
-        🔗 From URL
+        🌐 Live Search & URL
       </button>
       <button class="input-tab" id="tab-file" role="tab" aria-selected="false" aria-controls="panel-file" data-tab="file">
         📁 Upload File
@@ -124,15 +124,15 @@
     <!-- URL Tab -->
     <div id="panel-url" class="input-tab-panel" role="tabpanel" aria-labelledby="tab-url">
       <div class="form-group">
-        <label class="form-label">Domain Type</label>
+        <label class="form-label">Choose Review Source</label>
         <div class="domain-selector">
-          <button class="domain-chip active" data-domain="ecommerce" title="Shopping / Products">🛒 E-commerce</button>
-          <button class="domain-chip" data-domain="place" title="Single place or compare places via Google Maps">📍 Place / Restaurant</button>
+          <button class="domain-chip active" data-domain="ecommerce" title="Amazon Product Reviews via Apify">🛒 Amazon Product (URL)</button>
+          <button class="domain-chip" data-domain="place" title="Single place or compare places via Google Maps">📍 Hotel & Restaurant (Google Maps)</button>
         </div>
       </div>
       <div id="urlEcommerceSection">
       <div class="form-group" style="margin-top:16px;">
-        <label class="form-label" for="urlInput">Review page URL</label>
+        <label class="form-label" for="urlInput">Amazon Product URL</label>
         <div class="url-input-group">
           <input
             type="url"
@@ -141,7 +141,7 @@
             placeholder="https://www.amazon.in/dp/... or https://www.amazon.com/dp/..."
           />
           <button class="btn btn-secondary" id="fetchUrlBtn" style="white-space:nowrap;">
-            <span id="fetchBtnText">🔍 Fetch Reviews</span>
+            <span id="fetchBtnText">🔍 Fetch Amazon Reviews</span>
           </button>
         </div>
       </div>
@@ -177,7 +177,7 @@
                 autocomplete="off"
               />
               <button class="btn btn-secondary" id="saarmingFetchBtn" style="white-space:nowrap;">
-                <span id="saarmingFetchBtnText">📍 Fetch Reviews</span>
+                <span id="saarmingFetchBtnText">📍 Fetch Google Reviews</span>
               </button>
             </div>
             <div id="saarmingDomainHint" style="font-size:12px; color:var(--text-muted); margin-top:6px;"></div>

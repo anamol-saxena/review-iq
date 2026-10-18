@@ -10,7 +10,7 @@ const DomainRouter = {
    */
   SCHEMAS: {
     hotel: {
-      label: "Hotel / Resort",
+      label: "Hotel & Resort",
       icon: "🏨",
       color: "#7c3aed",
       categories: [
@@ -23,14 +23,14 @@ const DomainRouter = {
         { key: "amenities",     label: "Amenities & Facilities",   icon: "🏊" },
         { key: "wifi",          label: "WiFi & Connectivity",      icon: "📶" },
       ],
-      keywords: ["hotel", "resort", "room", "check-in", "checkout", "front desk", "housekeeping",
-                 "pool", "lobby", "suite", "concierge", "bed", "pillow", "breakfast included",
-                 "spa", "gym", "beach", "view", "stay", "night", "accommodation", "airbnb",
-                 "treehouse", "hostel", "guesthouse", "lodge"],
+      keywords: ["hotel", "resort", "hotel room", "check-in", "checkout", "front desk", "housekeeping",
+                 "resort pool", "hotel lobby", "suite", "concierge", "pillow", "breakfast included",
+                 "spa resort", "hotel gym", "beachfront", "room service", "overnight stay", "accommodation", "airbnb",
+                 "treehouse", "hostel", "guesthouse", "lodge", "valet", "hotel staff"],
     },
 
     restaurant: {
-      label: "Restaurant / Café",
+      label: "Restaurant & Dining",
       icon: "🍽️",
       color: "#f59e0b",
       categories: [
@@ -51,7 +51,7 @@ const DomainRouter = {
     },
 
     electronics: {
-      label: "Electronics / Gadget",
+      label: "Electronics & Gadgets",
       icon: "💻",
       color: "#06b6d4",
       categories: [
@@ -68,7 +68,8 @@ const DomainRouter = {
                  "smartphone", "tablet", "watch", "smartwatch", "camera", "battery",
                  "noise cancelling", "anc", "bluetooth", "wifi", "processor", "ram",
                  "display", "screen", "resolution", "performance", "app", "software",
-                 "warranty", "amazon", "flipkart", "samsung", "sony", "apple", "dell"],
+                 "warranty", "amazon", "flipkart", "samsung", "sony", "apple", "dell",
+                 "charger", "cable", "wireless"],
     },
 
     ecommerce: {
@@ -76,19 +77,20 @@ const DomainRouter = {
       icon: "📦",
       color: "#10b981",
       categories: [
-        { key: "product_accuracy", label: "Product Accuracy",     icon: "✅" },
-        { key: "quality",          label: "Product Quality",      icon: "⭐" },
-        { key: "shipping",         label: "Shipping & Delivery",  icon: "🚚" },
-        { key: "packaging",        label: "Packaging",            icon: "📦" },
-        { key: "value",            label: "Value for Money",      icon: "💰" },
-        { key: "seller",           label: "Seller Reliability",   icon: "🤝" },
-        { key: "returns",          label: "Returns & Refunds",    icon: "↩️" },
-        { key: "authenticity",     label: "Authenticity",         icon: "🏷️" },
+        { key: "build_quality",      label: "Build Quality & Materials",   icon: "🔧" },
+        { key: "performance",        label: "Performance & Functionality", icon: "⚡" },
+        { key: "ease_of_use",        label: "Ease of Use & Assembly",      icon: "🎯" },
+        { key: "value",              label: "Value for Money",             icon: "💰" },
+        { key: "design_portability", label: "Design & Portability",        icon: "📐" },
+        { key: "durability",         label: "Durability & Reliability",    icon: "⭐" },
+        { key: "support_manuals",    label: "Support & Documentation",     icon: "📋" },
+        { key: "packaging_delivery", label: "Packaging & Delivery",        icon: "📦" },
       ],
-      keywords: ["delivery", "shipped", "packaging", "box", "arrived", "seller",
-                 "return", "refund", "exchange", "fake", "original", "authentic",
-                 "damaged", "broken", "missing", "order", "tracking", "courier",
-                 "days", "weeks", "dispatch", "amazon", "flipkart", "meesho"],
+      keywords: ["product", "machine", "device", "treadmill", "walking pad", "fitness", "exercise",
+                 "motor", "speed", "compact", "remote", "setup", "assembly", "manual",
+                 "workout", "equipment", "build quality", "weight", "durable", "sturdy",
+                 "delivery", "shipped", "packaging", "box", "arrived", "seller", "amazon", "flipkart",
+                 "return", "refund", "exchange", "order", "price", "brand", "item", "purchase"],
     },
   },
 
@@ -96,9 +98,10 @@ const DomainRouter = {
    * Auto-detect the domain from review text content
    * @param {Array} reviews - Processed review objects
    * @param {string} manualOverride - If user selected a domain manually
+   * @param {Array<string>|null} allowedDomains - Optional subset of domains allowed
    * @returns {string} Domain key
    */
-  detectDomain(reviews, manualOverride = "auto") {
+  detectDomain(reviews, manualOverride = "auto", allowedDomains = null) {
     if (manualOverride && manualOverride !== "auto") {
       return manualOverride;
     }
@@ -106,13 +109,25 @@ const DomainRouter = {
     const combinedText = reviews.map(r => r.text).join(" ").toLowerCase();
     const scores = {};
 
-    for (const [domain, schema] of Object.entries(this.SCHEMAS)) {
+    const candidateSchemas = allowedDomains && Array.isArray(allowedDomains) && allowedDomains.length > 0
+      ? Object.entries(this.SCHEMAS).filter(([d]) => allowedDomains.includes(d))
+      : Object.entries(this.SCHEMAS);
+
+    for (const [domain, schema] of candidateSchemas) {
       scores[domain] = schema.keywords.filter(kw => combinedText.includes(kw.toLowerCase())).length;
     }
 
     // Return domain with highest keyword match
     const detected = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
-    return detected ? detected[0] : "electronics"; // Default fallback
+    if (detected && detected[1] > 0) {
+      return detected[0];
+    }
+
+    // Fallback: first allowed domain, or ecommerce
+    if (allowedDomains && allowedDomains.length > 0) {
+      return allowedDomains[0];
+    }
+    return "ecommerce";
   },
 
   /**

@@ -104,7 +104,7 @@ const SaarmingClient = {
     const { meta = {}, saarming = {}, count, totalReviewsOnGoogle, domain } = result;
     const { trend = {}, confidence = "Low", lowSample = false } = saarming;
 
-    const domainLabel = domain === "hotel" ? "Hotel / Destination" : "Restaurant / Café";
+    const domainLabel = domain === "hotel" ? "Hotel & Resort" : "Restaurant & Dining";
     const domainIcon  = domain === "hotel" ? "🏨" : "🍽️";
     const cityLine    = meta.city ? `📍 ${meta.city}` : "";
     const scoreLabel  = meta.overallRating ? `${meta.overallRating} / 5` : "N/A";
@@ -169,8 +169,8 @@ const SaarmingClient = {
         ${lowSampleBanner}
         <div class="sm-header-bar">
           <div class="sm-title-row">
-            <span class="sm-logo">🔍</span>
-            <span class="sm-brand">SAARMING:</span>
+            <span class="sm-logo">📍</span>
+            <span class="sm-brand">GOOGLE MAPS VERDICT:</span>
             <span class="sm-place-name">${escHtml(meta.placeName || "Unknown")}</span>
           </div>
           <div class="sm-meta-row">
@@ -219,7 +219,7 @@ const SaarmingClient = {
         ${contraHtml}
         ${verdictHtml}
 
-        <div class="sm-footer">Powered by SaarMind · Google Maps via Apify · Analyzed by Gemini AI</div>
+        <div class="sm-footer">Verified Google Maps Reviews via Apify · Analyzed by Gemini AI</div>
       </div>`;
   },
 
@@ -270,12 +270,12 @@ const SaarmingClient = {
         <div class="sm-header-bar">
           <div class="sm-title-row">
             <span class="sm-logo">🏆</span>
-            <span class="sm-brand">SAARMING COMPARISON</span>
+            <span class="sm-brand">GOOGLE MAPS COMPARISON</span>
           </div>
         </div>
         <div class="sm-compare-places">${placeCards}</div>
         ${winnerHtml}
-        <div class="sm-footer">Powered by SaarMind · Google Maps via Apify</div>
+        <div class="sm-footer">Verified Google Maps Reviews via Apify · Analyzed by Gemini AI</div>
       </div>`;
   },
 };

@@ -283,14 +283,16 @@ async function fetchUrl() {
   btn.disabled = true;
   btnText.textContent = "⏳ Fetching...";
   status.style.display = "block";
-  status.innerHTML = `<div style="color:var(--text-secondary); font-size:13px;">🌐 Launching real browser to fetch live reviews...</div>`;
+  status.innerHTML = `<div style="color:var(--text-secondary); font-size:13px;">🔍 Fetching verified reviews via Apify...</div>`;
 
   try {
     const data = await ReviewFetcher.fetchFromUrl(url, selectedDomain);
     AppState.urlFetchedReviews = data.reviews;
+    AppState.urlFetchedData = data;
 
     const noteHtml = data.note ? `<div style="color:var(--text-muted); font-size:12px; margin-top:4px;">ℹ️ ${data.note}</div>` : "";
-    status.innerHTML = `<div style="color:var(--success); font-size:13px;">✅ Fetched ${data.count} real review(s) via ${data.meta?.source || data.domain}</div>${noteHtml}`;
+    const sourceDisplay = data.meta?.source === "apify_amazon" ? "Amazon" : (data.meta?.source || "web");
+    status.innerHTML = `<div style="color:var(--success); font-size:13px;">✅ Fetched ${data.count} real review(s) via ${sourceDisplay}</div>${noteHtml}`;
 
     $("urlFetchedPreview").style.display = "block";
     const preview = data.reviews.slice(0, 5).map((r, i) => `${i + 1}. ${r.rating ? `[${r.rating}★] ` : ""}${r.text}`).join("\n\n");
@@ -302,7 +304,7 @@ async function fetchUrl() {
     showToast("Failed to fetch URL", "error");
   } finally {
     btn.disabled = false;
-    btnText.textContent = "🔍 Fetch Reviews";
+    btnText.textContent = "🔍 Fetch Amazon Reviews";
   }
 }
 
@@ -360,10 +362,24 @@ async function runAnalysis() {
 
     // ── Step 2: Domain Routing ──
     await activatePipelineStep("step-domain", 800);
-    const domainOverride = tab === "demo" ? AppState.currentScenario?.domain
-      : tab === "url" && isPlaceSource() ? AppState.saarmingResult?.domain
-      : "auto";
-    const domain = DomainRouter.detectDomain(reviews, domainOverride);
+    let domainOverride = "auto";
+    let allowedDomains = null;
+
+    if (tab === "demo") {
+      domainOverride = AppState.currentScenario?.domain || "auto";
+    } else if (tab === "url") {
+      if (isPlaceSource()) {
+        // Google Maps place is strictly places (Hotel or Restaurant)
+        allowedDomains = ["restaurant", "hotel"];
+        domainOverride = AppState.saarmingResult?.domain || "auto";
+      } else {
+        // Amazon product URL is strictly physical/consumer product
+        allowedDomains = ["ecommerce", "electronics"];
+        domainOverride = "auto";
+      }
+    }
+
+    const domain = DomainRouter.detectDomain(reviews, domainOverride, allowedDomains);
     const domainContext = DomainRouter.buildDomainContext(domain);
     const schema = DomainRouter.getSchema(domain);
 
@@ -476,11 +492,34 @@ function renderResults(analysis, confidence, stats, schema, domain) {
   // Header
   const scenario = AppState.lastScenario;
   const placeLabel = AppState.lastIsPlace
-    ? AppState.saarmingCompareData?.results?.map((r) => r.placeName).join(" vs ") || AppState.saarmingResult?.meta?.placeName
+    ? AppState.saarmingCompareData?.results?.map((r) => r.placeName).join(" vs ") ||
+      AppState.saarmingResult?.meta?.placeName ||
+      AppState.saarmingResult?.placeName ||
+      $("saarmingPlaceInput")?.value?.trim()
     : null;
+
+  const productTitle = (!AppState.lastIsPlace && AppState.urlFetchedData?.meta?.title)
+    ? AppState.urlFetchedData.meta.title
+    : null;
+
   $("resultIcon").textContent = scenario?.icon || schema.icon;
-  $("resultName").textContent = placeLabel || scenario?.name || `${schema.label} Analysis`;
-  $("resultMeta").textContent = `${schema.label} · ${stats.processed} reviews · ${domain} domain`;
+  $("resultName").textContent = placeLabel || productTitle || scenario?.name || `${schema.label} Intelligence`;
+
+  // Source attribution for meta line
+  let sourceLabel = "Customer Reviews";
+  if (AppState.lastIsPlace) {
+    sourceLabel = "Google Maps Reviews";
+  } else if (AppState.currentTab === "url" || AppState.urlFetchedData) {
+    sourceLabel = "Amazon Reviews";
+  } else if (scenario) {
+    sourceLabel = `${scenario.source || "Sample"} Reviews`;
+  } else if (AppState.currentTab === "file") {
+    sourceLabel = "Uploaded Reviews";
+  } else if (AppState.currentTab === "paste") {
+    sourceLabel = "Pasted Reviews";
+  }
+
+  $("resultMeta").textContent = `${schema.label} · ${stats.processed} ${sourceLabel} Analyzed`;
 
   // Confidence badge
   const badge = $("confidenceBadge");
@@ -498,7 +537,7 @@ function renderResults(analysis, confidence, stats, schema, domain) {
   renderThematicCard(analysis.categories || {}, schema);
 
   // Contradictions
-  renderContradictions(analysis.contradictions || []);
+  renderContradictions(analysis.contradictions || [], schema);
 
   // Reasoning Chain
   renderReasoningChain(analysis.reasoning || {});
@@ -575,8 +614,22 @@ function renderVerdictCard(analysis, confidence) {
   scoreEl.style["background-clip"] = "text";
 
   $("verdictSummary").textContent = analysis.verdict?.summary || "";
-  $("verdictChooseIf").textContent = `you care about ${analysis.verdict?.chooseIf || "—"}`;
-  $("verdictSkipIf").textContent = `${analysis.verdict?.skipIf || "—"} matters to you`;
+
+  // Helper to format clean verdict statement without double phrases
+  const formatStatement = (text, fallback = "—") => {
+    if (!text) return fallback;
+    let str = text.trim();
+    str = str.replace(/^you care about\s+/i, "");
+    str = str.replace(/^if you\s+/i, "you ");
+    str = str.replace(/\s+matters to you\.?$/i, ".");
+    if (str.length > 0) {
+      str = str.charAt(0).toUpperCase() + str.slice(1);
+    }
+    return str;
+  };
+
+  $("verdictChooseIf").textContent = formatStatement(analysis.verdict?.chooseIf);
+  $("verdictSkipIf").textContent = formatStatement(analysis.verdict?.skipIf);
 
   if (analysis.keyInsight) {
     $("keyInsightBox").style.display = "block";
@@ -696,7 +749,7 @@ function animateBars() {
   });
 }
 
-function renderContradictions(contradictions) {
+function renderContradictions(contradictions, schema) {
   const section = $("contradictionsSection");
   const grid = $("contradictionsGrid");
 
@@ -708,18 +761,23 @@ function renderContradictions(contradictions) {
   section.style.display = "block";
   grid.innerHTML = contradictions
     .slice(0, 6)
-    .map(
-      (c) => `
+    .map((c) => {
+      const cat = schema?.categories?.find((item) => item.key === c.theme);
+      const themeLabel = cat
+        ? `${cat.icon || ""} ${cat.label}`
+        : (c.theme || "").replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+
+      return `
     <div class="contradiction-card">
-      <div class="contradiction-theme">⚡ ${escHtml(c.theme || "")}</div>
+      <div class="contradiction-theme">⚡ ${escHtml(themeLabel)}</div>
       <div class="contradiction-claims">
         <div class="contradiction-claim claim-a">👍 "${escHtml(c.claim_a || "")}"</div>
         <div class="contradiction-claim claim-b">👎 "${escHtml(c.claim_b || "")}"</div>
       </div>
       <div class="contradiction-resolution">💡 ${escHtml(c.resolution || "")}</div>
     </div>
-  `
-    )
+  `;
+    })
     .join("");
 }
 
@@ -961,7 +1019,7 @@ async function saarmingFetchSingle() {
     showToast("SaarMind fetch failed", "error");
   } finally {
     btn.disabled = false;
-    btnText.textContent = "📍 Fetch Reviews";
+    btnText.textContent = "📍 Fetch Google Reviews";
   }
 }
 
