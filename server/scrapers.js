@@ -70,8 +70,12 @@ function collectReviewNodes(node, results) {
 async function extractAmazon(page) {
   // Check for Amazon Captcha / Robot Check
   const pageTitle = (await page.title().catch(() => "")) || "";
-  if (/robot check|captcha/i.test(pageTitle)) {
-    console.warn("Amazon anti-bot verification challenge encountered.");
+  const pageUrl = page.url() || "";
+  if (
+    /robot check|captcha|automated access|sorry!/i.test(pageTitle) ||
+    /validateCaptcha/i.test(pageUrl)
+  ) {
+    console.warn(`Amazon anti-bot challenge encountered (Title: "${pageTitle}", URL: "${pageUrl}").`);
     return [];
   }
 

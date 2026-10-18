@@ -151,6 +151,15 @@ async function scrapeWithExtractor(url, extractorFn, sourceLabel, waitTime = 200
       window.chrome = { runtime: {} };
     });
 
+    // Block heavy static assets to speed up page load and reduce memory usage
+    await page.route("**/*", (route) => {
+      const type = route.request().resourceType();
+      if (["image", "media", "font"].includes(type)) {
+        return route.abort();
+      }
+      return route.continue();
+    });
+
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
     // Give lazy-loaded review widgets a moment to render
     await page.waitForTimeout(waitTime);
@@ -221,6 +230,69 @@ async function fetchYelp(input) {
   return scrapeGeneric(targetUrl, "yelp");
 }
 
+// ── Amazon: Playwright scraper with Apify residential proxy fallback ─
+async function fetchAmazonReviews(url) {
+  // 1. Try local Playwright scrape first (fast when residential IP or local)
+  try {
+    const localResult = await scrapeWithExtractor(url, extractAmazon, "amazon");
+    if (localResult && Array.isArray(localResult.reviews) && localResult.reviews.length > 0) {
+      return localResult;
+    }
+  } catch (err) {
+    console.warn("Direct Playwright Amazon scrape failed, trying fallback:", err.message);
+  }
+
+  // 2. Fallback to Apify Amazon Reviews Scraper (residential proxies bypass datacenter blocks)
+  const apifyToken = process.env.APIFY_TOKEN;
+  if (apifyToken) {
+    try {
+      console.log("Using Apify Amazon scraper fallback for URL:", url);
+      const res = await axios.post(
+        `https://api.apify.com/v2/acts/junglee~amazon-reviews-scraper/run-sync-get-dataset-items?token=${apifyToken}`,
+        {
+          productUrls: [{ url }],
+          maxReviews: 20,
+        },
+        { timeout: 90000 }
+      );
+
+      const items = Array.isArray(res.data) ? res.data : [];
+      const reviews = items
+        .filter((it) => it.reviewDescription || it.reviewTitle)
+        .map((it) => {
+          const text = it.reviewTitle
+            ? `${it.reviewTitle}. ${it.reviewDescription || ""}`.trim()
+            : it.reviewDescription || "";
+          return toUnified("amazon", {
+            rating: it.ratingScore,
+            text,
+            date: it.date,
+            verified: !!it.isVerified,
+            author: it.userName || it.userId || null,
+          });
+        });
+
+      if (reviews.length > 0) {
+        const first = items[0] || {};
+        return {
+          meta: {
+            title: first.productTitle || "Amazon Product",
+            rating: first.totalCategoryRatings ? first.ratingScore : null,
+            asin: first.productAsin,
+            source: "apify_amazon",
+          },
+          reviews,
+          note: "Extracted via Apify proxy network to bypass cloud datacenter anti-bot restrictions.",
+        };
+      }
+    } catch (apifyErr) {
+      console.error("Apify Amazon fallback failed:", apifyErr.response?.data || apifyErr.message);
+    }
+  }
+
+  return { meta: { url, source: "amazon" }, reviews: [] };
+}
+
 // ── Route ────────────────────────────────────────────────────
 app.post("/api/fetch-reviews", async (req, res) => {
   const { input, domain: domainOverride } = req.body || {};
@@ -253,7 +325,7 @@ app.post("/api/fetch-reviews", async (req, res) => {
         result = await scrapeWithExtractor(input, null, "travel", 2000);
       }
     } else if (/amazon\./i.test(input)) {
-      result = await scrapeWithExtractor(input, extractAmazon, "amazon");
+      result = await fetchAmazonReviews(input);
     } else if (/flipkart\.com/i.test(input)) {
       result = await scrapeWithExtractor(input, extractFlipkart, "flipkart");
     } else {
