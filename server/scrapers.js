@@ -66,27 +66,43 @@ function collectReviewNodes(node, results) {
   }
 }
 
-/** Amazon product-review page — stable `data-hook` attributes */
+/** Amazon product-review page — robust data-hook & class fallbacks + lazy scroll */
 async function extractAmazon(page) {
-  await page.waitForSelector('[data-hook="review"]', { timeout: 8000 }).catch(() => {});
+  // Check for Amazon Captcha / Robot Check
+  const pageTitle = (await page.title().catch(() => "")) || "";
+  if (/robot check|captcha/i.test(pageTitle)) {
+    console.warn("Amazon anti-bot verification challenge encountered.");
+    return [];
+  }
 
-  const raw = await page.$$eval('[data-hook="review"]', (nodes) =>
+  // Scroll down to trigger Amazon's lazy-loaded review widget
+  await page.evaluate(() => {
+    window.scrollBy(0, 1800);
+  }).catch(() => {});
+  await page.waitForTimeout(1500);
+
+  // Wait for review container
+  await page.waitForSelector('[data-hook="review"], div[id^="customer_review-"], .review', { timeout: 8000 }).catch(() => {});
+
+  const selector = '[data-hook="review"], div[id^="customer_review-"], .review';
+  const raw = await page.$$eval(selector, (nodes) =>
     nodes.map((n) => {
-      const body = n.querySelector('[data-hook="review-body"]');
-      const starText = n.querySelector('[data-hook="review-star-rating"] span, [data-hook="cmps-review-star-rating"] span')?.textContent || "";
+      const body = n.querySelector('[data-hook="review-body"], .review-text-content, .review-text, .review-body');
+      const starText = n.querySelector('[data-hook="review-star-rating"] span, [data-hook="cmps-review-star-rating"] span, .a-icon-alt')?.textContent || "";
       const ratingMatch = starText.match(/(\d+(?:\.\d+)?)/);
       return {
-        text: body?.innerText || "",
+        text: (body?.innerText || body?.textContent || "").trim(),
         rating: ratingMatch ? ratingMatch[1] : null,
-        date: n.querySelector('[data-hook="review-date"]')?.textContent?.trim() || null,
-        author: n.querySelector(".a-profile-name")?.textContent?.trim() || null,
-        verified: !!n.querySelector('[data-hook="avp-badge"]'),
+        date: n.querySelector('[data-hook="review-date"], .review-date')?.textContent?.trim() || null,
+        author: n.querySelector(".a-profile-name, .author")?.textContent?.trim() || null,
+        verified: !!n.querySelector('[data-hook="avp-badge"], [data-hook="review-format-strip"]'),
       };
     })
   );
 
-  return raw.filter((r) => r.text.trim().length > 5).map((r) => toUnified("amazon", r));
+  return raw.filter((r) => r.text && r.text.length > 5).map((r) => toUnified("amazon", r));
 }
+
 
 /** Flipkart product page — class names are obfuscated/rotate, so use broad heuristics */
 async function extractFlipkart(page) {

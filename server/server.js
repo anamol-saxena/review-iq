@@ -111,12 +111,47 @@ function extractYelpAlias(url) {
 }
 
 // ── Core: launch a real browser, navigate, extract reviews ─────
-async function scrapeWithExtractor(url, extractorFn, sourceLabel, waitTime = 1500) {
-  const browser = await chromium.launch({ headless: true });
+async function scrapeWithExtractor(url, extractorFn, sourceLabel, waitTime = 2000) {
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-blink-features=AutomationControlled",
+      "--window-position=0,0",
+    ],
+  });
   try {
-    const context = await browser.newContext({ userAgent: UA, viewport: { width: 1366, height: 900 } });
+    const context = await browser.newContext({
+      userAgent: UA,
+      viewport: { width: 1366, height: 900 },
+      deviceScaleFactor: 1,
+      locale: "en-US",
+      extraHTTPHeaders: {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
+        "Sec-CH-UA": '"Chromium";v="126", "Not/A)Brand";v="8", "Google Chrome";v="126"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"macOS"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+      },
+    });
+
     const page = await context.newPage();
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
+
+    // Stealth: mask headless indicators and webdriver property
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en", "hi"] });
+      window.chrome = { runtime: {} };
+    });
+
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
     // Give lazy-loaded review widgets a moment to render
     await page.waitForTimeout(waitTime);
 
