@@ -470,6 +470,8 @@ function hideAllSections() {
   $("processingSection").classList.remove("visible");
   $("resultsSection").classList.remove("visible");
   $("errorState").classList.remove("visible");
+  $("saarmingVerdictCard")?.remove();
+  $("saarmingWinnerCard")?.remove();
 }
 
 function showProcessingSection() {
@@ -489,34 +491,38 @@ function showErrorState(title, message) {
 
 // ── Render Results ────────────────────────────────────────────
 function renderResults(analysis, confidence, stats, schema, domain) {
+  // Always remove old injected SaarMind cards first!
+  $("saarmingVerdictCard")?.remove();
+  $("saarmingWinnerCard")?.remove();
+
   // Header
   const scenario = AppState.lastScenario;
-  const placeLabel = AppState.lastIsPlace
+  const isUrlTab = AppState.currentTab === "url";
+
+  const placeLabel = (isUrlTab && AppState.lastIsPlace)
     ? AppState.saarmingCompareData?.results?.map((r) => r.placeName).join(" vs ") ||
       AppState.saarmingResult?.meta?.placeName ||
       AppState.saarmingResult?.placeName ||
       $("saarmingPlaceInput")?.value?.trim()
     : null;
 
-  const productTitle = (!AppState.lastIsPlace && AppState.urlFetchedData?.meta?.title)
+  const productTitle = (isUrlTab && !AppState.lastIsPlace && AppState.urlFetchedData?.meta?.title)
     ? AppState.urlFetchedData.meta.title
     : null;
 
   $("resultIcon").textContent = scenario?.icon || schema.icon;
   $("resultName").textContent = placeLabel || productTitle || scenario?.name || `${schema.label} Intelligence`;
 
-  // Source attribution for meta line
+  // Source attribution strictly based on active tab
   let sourceLabel = "Customer Reviews";
-  if (AppState.lastIsPlace) {
-    sourceLabel = "Google Maps Reviews";
-  } else if (AppState.currentTab === "url" || AppState.urlFetchedData) {
-    sourceLabel = "Amazon Reviews";
-  } else if (scenario) {
-    sourceLabel = `${scenario.source || "Sample"} Reviews`;
+  if (AppState.currentTab === "paste") {
+    sourceLabel = "Pasted Reviews";
   } else if (AppState.currentTab === "file") {
     sourceLabel = "Uploaded Reviews";
-  } else if (AppState.currentTab === "paste") {
-    sourceLabel = "Pasted Reviews";
+  } else if (AppState.currentTab === "demo") {
+    sourceLabel = `${scenario?.source || "Sample"} Reviews`;
+  } else if (isUrlTab) {
+    sourceLabel = AppState.lastIsPlace ? "Google Maps Reviews" : "Amazon Reviews";
   }
 
   $("resultMeta").textContent = `${schema.label} · ${stats.processed} ${sourceLabel} Analyzed`;
@@ -636,20 +642,20 @@ function renderVerdictCard(analysis, confidence) {
     $("keyInsightText").textContent = analysis.keyInsight;
   }
 
+  // Remove any previous confidence details and factors
+  $("verdictCard").querySelectorAll(".confidence-detail, .confidence-factors").forEach((el) => el.remove());
+
   // Show confidence description inside card
   const confDetail = document.createElement("div");
+  confDetail.className = "confidence-detail";
   confDetail.style.cssText = "font-size:12px; color:var(--text-muted); margin-top:12px; line-height:1.5;";
   confDetail.innerHTML = `<strong style="color:${confidence.color}">${confidence.icon} ${confidence.label}</strong> — ${confidence.description}`;
-
-  const existingDetail = $("verdictCard").querySelector(".confidence-detail");
-  if (existingDetail) existingDetail.remove();
-
-  confDetail.className = "confidence-detail";
   $("verdictCard").appendChild(confDetail);
 
   // Confidence factors
   if (confidence.factors?.length) {
     const factorsEl = document.createElement("div");
+    factorsEl.className = "confidence-factors";
     factorsEl.style.cssText = "display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;";
     factorsEl.innerHTML = confidence.factors
       .map(
