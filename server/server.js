@@ -9,7 +9,9 @@
 // clear error instead of placeholder reviews.
 // ============================================================
 
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
+require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
@@ -19,8 +21,74 @@ const { extractJsonLd, extractAmazon, extractFlipkart, extractTripAdvisor, extra
 const app = express();
 app.use(cors());
 app.use(express.json());
+// Serve frontend static files
+app.use(express.static(path.join(__dirname, "..")));
+
+// ── Gemini Analysis Endpoint ──────────────────────────────────
+// Keeps GEMINI_API_KEY secure on the server; never exposed to browser
+app.post("/api/analyze", async (req, res) => {
+  const { prompt } = req.body || {};
+  if (!prompt || typeof prompt !== "string") {
+    return res.status(400).json({ error: 'Missing "prompt" in request body.' });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY" || apiKey.trim() === "") {
+    return res.status(503).json({
+      error: "Gemini API key is not configured on the server. Please set GEMINI_API_KEY in your deployment environment.",
+    });
+  }
+
+  const model = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.3,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 8192,
+      responseMimeType: "application/json",
+    },
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+    ],
+  };
+
+  try {
+    const response = await axios.post(url, body, {
+      headers: { "Content-Type": "application/json" },
+      timeout: 60000,
+    });
+
+    const data = response.data;
+    if (data.promptFeedback?.blockReason) {
+      return res.status(400).json({ error: `Content blocked: ${data.promptFeedback.blockReason}` });
+    }
+
+    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!content) {
+      return res.status(502).json({ error: "No content returned from Gemini model." });
+    }
+
+    res.json({ content });
+  } catch (err) {
+    console.error("Gemini proxy error:", err.response?.data || err.message);
+    const msg = err.response?.data?.error?.message || err.message;
+    if (err.response?.status === 400 && msg.includes("API_KEY")) {
+      return res.status(401).json({ error: "Invalid Gemini API key configured on server." });
+    }
+    res.status(err.response?.status || 500).json({ error: `Gemini API error: ${msg}` });
+  }
+});
+
 
 const PORT = process.env.PORT || 8787;
+
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
 // ── Domain detection (mirrors the frontend's logic) ────────────

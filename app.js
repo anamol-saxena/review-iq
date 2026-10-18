@@ -57,7 +57,6 @@ const ReviewFetcher = {
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-  initSettings();
   initTabs();
   initFileUpload();
   initDemoGrid();
@@ -67,63 +66,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initAnalyze();
   initResultsActions();
   initTextareaCount();
-
-  // Override CONFIG with saved settings
-  const savedKey = localStorage.getItem("gemini_api_key");
-  const savedModel = localStorage.getItem("gemini_model");
-  if (savedKey) CONFIG.GEMINI_API_KEY = savedKey;
-  if (savedModel) CONFIG.GEMINI_MODEL = savedModel;
-
-  updateApiKeyStatus();
 });
 
-// ── Settings ──────────────────────────────────────────────────
-function initSettings() {
-  $("openSettingsBtn").addEventListener("click", openSettings);
-  $("closeSettingsBtn").addEventListener("click", closeSettings);
-  $("saveSettingsBtn").addEventListener("click", saveSettings);
-  $("settingsModal").addEventListener("click", (e) => {
-    if (e.target === $("settingsModal")) closeSettings();
-  });
-
-  // Pre-fill saved values
-  const savedKey = localStorage.getItem("gemini_api_key") || "";
-  const savedModel = localStorage.getItem("gemini_model") || "gemini-3.1-flash-lite";
-  $("apiKeyInput").value = savedKey;
-  $("modelSelect").value = savedModel;
-}
-
-function openSettings() {
-  $("settingsModal").classList.add("active");
-  $("apiKeyInput").focus();
-}
-
-function closeSettings() {
-  $("settingsModal").classList.remove("active");
-}
-
-function saveSettings() {
-  const key = $("apiKeyInput").value.trim();
-  const model = $("modelSelect").value;
-
-  if (key) {
-    localStorage.setItem("gemini_api_key", key);
-    CONFIG.GEMINI_API_KEY = key;
-  }
-  localStorage.setItem("gemini_model", model);
-  CONFIG.GEMINI_MODEL = model;
-
-  updateApiKeyStatus();
-  closeSettings();
-}
-
-function updateApiKeyStatus() {
-  const hasKey = CONFIG.GEMINI_API_KEY && CONFIG.GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY_HERE";
-  const dot = $("apiKeyStatusDot");
-  const text = $("apiKeyStatusText");
-  dot.style.background = hasKey ? "var(--success)" : "var(--error)";
-  text.textContent = hasKey ? "API Key Set ✓" : "No API Key";
-}
 
 // ── Tabs ──────────────────────────────────────────────────────
 function initTabs() {
@@ -370,14 +314,6 @@ function initAnalyze() {
 async function runAnalysis() {
   if (AppState.isAnalyzing) return;
 
-  // Validate API key
-  const hasKey = CONFIG.GEMINI_API_KEY && CONFIG.GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY_HERE";
-  if (!hasKey) {
-    openSettings();
-    showToast("Please set your Gemini API key first", "error");
-    return;
-  }
-
   // Collect raw reviews
   let rawReviews = null;
   const tab = AppState.currentTab;
@@ -476,16 +412,7 @@ async function runAnalysis() {
   } catch (err) {
     console.error("Analysis error:", err);
     hideProcessingSection();
-
-    if (err.message === "MISSING_API_KEY" || err.message === "INVALID_API_KEY") {
-      showErrorState(
-        "API Key Issue",
-        `Your Gemini API key is ${err.message === "MISSING_API_KEY" ? "missing" : "invalid"}. Please check your key in Settings.`,
-        true
-      );
-    } else {
-      showErrorState("Analysis Failed", err.message || "An unexpected error occurred. Please try again.");
-    }
+    showErrorState("Analysis Failed", err.message || "An unexpected error occurred. Please try again.");
   } finally {
     AppState.isAnalyzing = false;
     setAnalyzingState(false);
@@ -538,11 +465,10 @@ function hideProcessingSection() {
   $("processingSection").classList.remove("visible");
 }
 
-function showErrorState(title, message, openSettingsToo = false) {
+function showErrorState(title, message) {
   $("errorState").classList.add("visible");
   $("errorState").querySelector(".error-title").textContent = title;
   $("errorMessage").textContent = message;
-  if (openSettingsToo) openSettings();
 }
 
 // ── Render Results ────────────────────────────────────────────

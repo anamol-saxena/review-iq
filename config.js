@@ -1,19 +1,20 @@
+// Universal Review Analyzer — Frontend Configuration
 // ============================================================
-// Universal Review Analyzer — Configuration
-// ============================================================
-// Set your Gemini API key below before running the app.
-// Get your key at: https://aistudio.google.com/apikey
+// Note: Secrets (Gemini API key, Apify token, etc.) are kept
+// strictly on the backend and configured via server environment variables.
 // ============================================================
 
 const CONFIG = {
-  GEMINI_API_KEY: "YOUR_GEMINI_API_KEY_HERE",
   GEMINI_MODEL: "gemini-3.1-flash-lite",
-  GEMINI_API_BASE: "https://generativelanguage.googleapis.com/v1beta/models",
+
 
   // Local backend that does real review fetching (headless-browser
   // scraping + optional Yelp API). Start it from the server/ folder:
-  //   cd server && npm install && npm start
-  BACKEND_URL: "http://localhost:8787",
+  BACKEND_URL:
+    typeof window !== "undefined" && window.location.origin && window.location.origin.startsWith("http")
+      ? window.location.origin
+      : "http://localhost:8787",
+
 
   // Confidence thresholds
   CONFIDENCE: {

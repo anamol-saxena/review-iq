@@ -1,0 +1,18 @@
+# Secrets and Environment Variables
+.env
+.env.*
+server/.env
+server/.env.*
+
+# Dependencies
+node_modules/
+server/node_modules/
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+
+# System
+.system_generated/

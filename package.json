@@ -1,0 +1,19 @@
+{
+  "name": "review-analyzer",
+  "version": "1.0.0",
+  "description": "Universal Review Analyzer — AI-powered customer review analysis",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "install:server": "cd server && npm install",
+    "server": "node server/server.js"
+  },
+  "keywords": [
+    "reviews",
+    "gemini",
+    "ai",
+    "sentiment-analysis"
+  ],
+  "author": "",
+  "license": "ISC"
+}

@@ -81,6 +81,37 @@ Choose a domain and an optional product name in the shared options row, then cli
 
 Errors return a JSON body with an `error` field. Status codes include 400 (bad input), 429 (compute limit), 503 (missing `APIFY_TOKEN`), and 500 (other failures).
 
+## Deploy to Google Cloud (Cloud Run)
+
+The application includes a `Dockerfile` using the official Playwright base image (pre-configured with Chromium and Linux system libraries) and is ready for Google Cloud Run:
+
+1. **Install Google Cloud SDK** (if not already installed):
+   ```bash
+   brew install --cask google-cloud-sdk
+   ```
+
+2. **Authenticate and set your GCP Project**:
+   ```bash
+   gcloud auth login
+   gcloud config set project YOUR_GCP_PROJECT_ID
+   ```
+
+3. **Deploy using the automated script**:
+   ```bash
+   ./deploy-gcp.sh
+   ```
+
+   Or deploy manually via `gcloud`:
+   ```bash
+   gcloud run deploy review-analyzer \
+     --source . \
+     --region us-central1 \
+     --allow-unauthenticated \
+     --memory 2Gi \
+     --cpu 2 \
+     --set-env-vars GEMINI_API_KEY="your_key",APIFY_TOKEN="your_token"
+   ```
+
 ## Notes
 
 - The backend never fabricates reviews. If nothing can be extracted, it returns an error.

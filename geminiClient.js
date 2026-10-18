@@ -13,12 +13,6 @@ const GeminiClient = {
    * @returns {Object} Structured analysis result
    */
   async analyze(reviews, domain, domainContext, onStepComplete) {
-    const apiKey = CONFIG.GEMINI_API_KEY;
-
-    if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE") {
-      throw new Error("MISSING_API_KEY");
-    }
-
     const reviewsText = reviews
       .map((r, i) =>
         `[Review ${i + 1}] [Weight: ${r.recencyWeight}] [Year: ${r.year || "unknown"}] [Lang: ${r.lang}]\n${r.text}`
@@ -29,7 +23,7 @@ const GeminiClient = {
 
     onStepComplete?.("thinking", "Sending to Gemini reasoning core...");
 
-    const response = await this._callGemini(prompt, apiKey);
+    const response = await this._callGemini(prompt);
     const parsed = this._parseResponse(response, domainContext);
 
     return parsed;
@@ -114,55 +108,34 @@ Requirements:
   },
 
   /**
-   * Call the Gemini API
+   * Call the Gemini proxy endpoint on the backend
+   * The API key remains strictly on the server and is never sent to the browser
    */
-  async _callGemini(prompt, apiKey) {
-    const url = `${CONFIG.GEMINI_API_BASE}/${CONFIG.GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  async _callGemini(prompt) {
+    let response;
+    try {
+      response = await fetch(`${CONFIG.BACKEND_URL}/api/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+    } catch {
+      throw new Error(`Cannot reach backend at ${CONFIG.BACKEND_URL}. Ensure the server is running.`);
+    }
 
-    const body = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.3,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 8192,
-        responseMimeType: "application/json",
-      },
-      safetySettings: [
-        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-      ],
-    };
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      if (response.status === 400 && error?.error?.message?.includes("API_KEY")) {
-        throw new Error("INVALID_API_KEY");
-      }
-      throw new Error(`Gemini API error ${response.status}: ${error?.error?.message || "Unknown error"}`);
+      throw new Error(data.error || `Server returned ${response.status}`);
     }
 
-    const data = await response.json();
-
-    if (data.promptFeedback?.blockReason) {
-      throw new Error(`Content blocked: ${data.promptFeedback.blockReason}`);
+    if (!data.content) {
+      throw new Error("No content received from server analysis");
     }
 
-    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!content) {
-      throw new Error("No content in Gemini response");
-    }
-
-    return content;
+    return data.content;
   },
+
 
   /**
    * Parse Gemini's JSON response
