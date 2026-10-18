@@ -2,18 +2,15 @@
   "name": "review-analyzer-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Local backend that fetches real reviews via a headless browser (bypasses CORS/bot-blocking) and optional Yelp Fusion API.",
+  "description": "API-driven backend that fetches real reviews via Apify and Yelp Fusion API, and provides server-side Gemini AI analysis.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "postinstall": "playwright install chromium"
+    "start": "node server.js"
   },
   "dependencies": {
     "axios": "^1.7.9",
-    "cheerio": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "playwright": "^1.49.1"
+    "express": "^4.21.2"
   }
 }

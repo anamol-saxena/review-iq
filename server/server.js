@@ -1,12 +1,12 @@
 // ============================================================
 // Review Analyzer Backend
-// Fetches REAL reviews via a headless browser (Playwright) — this
-// runs server-side so it isn't subject to browser CORS restrictions
-// and renders JS like a real visitor, which is why it succeeds where
-// client-side fetch()/CORS-proxy scraping gets blocked.
+// API-driven architecture:
+// - Amazon Reviews: Apify Amazon Reviews Scraper (rotating residential proxies)
+// - Google Maps Reviews (SaarMind): Apify Google Maps Scraper
+// - Yelp Reviews: Yelp Fusion API
+// - AI Analysis: Google Gemini Flash (Server-Side Proxy)
 //
-// Never fabricates data: if nothing can be extracted, it returns a
-// clear error instead of placeholder reviews.
+// Never fabricates data: returns real extracted reviews.
 // ============================================================
 
 const path = require("path");
@@ -15,8 +15,7 @@ require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
-const { chromium } = require("playwright");
-const { extractJsonLd, extractAmazon, extractFlipkart, extractTripAdvisor, extractGeneric, toUnified } = require("./scrapers");
+const { toUnified } = require("./scrapers");
 
 const app = express();
 app.use(cors());
@@ -86,12 +85,9 @@ app.post("/api/analyze", async (req, res) => {
   }
 });
 
-
 const PORT = process.env.PORT || 8787;
 
-const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
-
-// ── Domain detection (mirrors the frontend's logic) ────────────
+// ── Domain detection ──────────────────────────────────────────
 function detectDomain(input, manual) {
   if (manual && manual !== "auto") return manual;
   const s = input.toLowerCase();
@@ -110,233 +106,164 @@ function extractYelpAlias(url) {
   return m ? m[1] : null;
 }
 
-// ── Core: launch a real browser, navigate, extract reviews ─────
-async function scrapeWithExtractor(url, extractorFn, sourceLabel, waitTime = 2000) {
-  const browser = await chromium.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-blink-features=AutomationControlled",
-      "--window-position=0,0",
-    ],
-  });
-  try {
-    const context = await browser.newContext({
-      userAgent: UA,
-      viewport: { width: 1366, height: 900 },
-      deviceScaleFactor: 1,
-      locale: "en-US",
-      extraHTTPHeaders: {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
-        "Sec-CH-UA": '"Chromium";v="126", "Not/A)Brand";v="8", "Google Chrome";v="126"',
-        "Sec-CH-UA-Mobile": "?0",
-        "Sec-CH-UA-Platform": '"macOS"',
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1",
-      },
-    });
-
-    const page = await context.newPage();
-
-    // Stealth: mask headless indicators and webdriver property
-    await page.addInitScript(() => {
-      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
-      Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en", "hi"] });
-      window.chrome = { runtime: {} };
-    });
-
-    // Block heavy static assets to speed up page load and reduce memory usage
-    await page.route("**/*", (route) => {
-      const type = route.request().resourceType();
-      if (["image", "media", "font"].includes(type)) {
-        return route.abort();
-      }
-      return route.continue();
-    });
-
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-    // Give lazy-loaded review widgets a moment to render
-    await page.waitForTimeout(waitTime);
-
-    let reviews = extractorFn ? await extractorFn(page) : [];
-
-    if (!reviews.length) {
-      const html = await page.content();
-      reviews = extractJsonLd(html);
-    }
-
-    if (!reviews.length) {
-      reviews = await extractGeneric(page);
-    }
-
-    return { meta: { url, source: sourceLabel }, reviews };
-  } finally {
-    await browser.close();
-  }
-}
-
-function scrapeGeneric(url, sourceLabel) {
-  return scrapeWithExtractor(url, null, sourceLabel);
-}
-
-// ── Restaurant domain: Yelp Fusion API (if configured) + browser fallback ─
+// ── Yelp Fusion API ───────────────────────────────────────────
 async function fetchYelp(input) {
   const apiKey = process.env.YELP_API_KEY;
   const alias = extractYelpAlias(input);
 
-  if (apiKey) {
-    try {
-      let business;
-      if (alias) {
-        const { data } = await axios.get(`https://api.yelp.com/v3/businesses/${alias}`, { headers: yelpAuthHeader(apiKey) });
-        business = data;
-      } else {
-        const { data } = await axios.get("https://api.yelp.com/v3/businesses/search", {
-          headers: yelpAuthHeader(apiKey),
-          params: { term: input, location: "United States", limit: 1 },
-        });
-        business = data.businesses?.[0];
-      }
-
-      if (business) {
-        const { data: reviewData } = await axios.get(
-          `https://api.yelp.com/v3/businesses/${business.id}/reviews`,
-          { headers: yelpAuthHeader(apiKey) }
-        );
-
-        const reviews = (reviewData.reviews || []).map((r) =>
-          toUnified("yelp", { rating: r.rating, text: r.text, date: r.time_created, author: r.user?.name, verified: true })
-        );
-
-        return {
-          meta: { name: business.name, rating: business.rating, reviewCount: business.review_count },
-          reviews,
-          note: "Yelp's official API returns a max of 3 review excerpts per business (Yelp API policy limit).",
-        };
-      }
-    } catch (err) {
-      console.warn("Yelp API lookup failed, falling back to browser scrape:", err.message);
-    }
+  if (!apiKey || apiKey === "YOUR_YELP_API_KEY") {
+    throw new Error(
+      "Yelp API key is not configured. For restaurants, use the 'Search Place' (SaarMind) tab to fetch Google Maps reviews via Apify, or paste reviews directly in the 'Paste Reviews' tab."
+    );
   }
 
-  // No API key, or API lookup failed/found nothing — scrape the real page
-  const targetUrl = /^https?:\/\//i.test(input) ? input : `https://www.yelp.com/search?find_desc=${encodeURIComponent(input)}`;
-  return scrapeGeneric(targetUrl, "yelp");
+  let business;
+  if (alias) {
+    const { data } = await axios.get(`https://api.yelp.com/v3/businesses/${alias}`, {
+      headers: yelpAuthHeader(apiKey),
+    });
+    business = data;
+  } else {
+    const { data } = await axios.get("https://api.yelp.com/v3/businesses/search", {
+      headers: yelpAuthHeader(apiKey),
+      params: { term: input, location: "United States", limit: 1 },
+    });
+    business = data.businesses?.[0];
+  }
+
+  if (!business) {
+    throw new Error(`No Yelp business found for "${input}".`);
+  }
+
+  const { data: reviewData } = await axios.get(
+    `https://api.yelp.com/v3/businesses/${business.id}/reviews`,
+    { headers: yelpAuthHeader(apiKey) }
+  );
+
+  const reviews = (reviewData.reviews || []).map((r) =>
+    toUnified("yelp", {
+      rating: r.rating,
+      text: r.text,
+      date: r.time_created,
+      author: r.user?.name,
+      verified: true,
+    })
+  );
+
+  return {
+    meta: { name: business.name, rating: business.rating, reviewCount: business.review_count },
+    count: reviews.length,
+    reviews,
+    note: "Yelp official API returns a max of 3 review excerpts per business (Yelp API policy limit).",
+  };
 }
 
-// ── Amazon: Playwright scraper with Apify residential proxy fallback ─
+// ── Amazon: Direct Apify Reviews Scraper (Primary) ─────────────
+// Uses rotating residential proxies to bypass datacenter IP bot protection.
+// Fetches up to 20 reviews (capped between min and max 20).
 async function fetchAmazonReviews(url) {
-  // 1. Try local Playwright scrape first (fast when residential IP or local)
-  try {
-    const localResult = await scrapeWithExtractor(url, extractAmazon, "amazon");
-    if (localResult && Array.isArray(localResult.reviews) && localResult.reviews.length > 0) {
-      return localResult;
-    }
-  } catch (err) {
-    console.warn("Direct Playwright Amazon scrape failed, trying fallback:", err.message);
-  }
-
-  // 2. Fallback to Apify Amazon Reviews Scraper (residential proxies bypass datacenter blocks)
   const apifyToken = process.env.APIFY_TOKEN;
-  if (apifyToken) {
-    try {
-      console.log("Using Apify Amazon scraper fallback for URL:", url);
-      const res = await axios.post(
-        `https://api.apify.com/v2/acts/junglee~amazon-reviews-scraper/run-sync-get-dataset-items?token=${apifyToken}`,
-        {
-          productUrls: [{ url }],
-          maxReviews: 20,
-        },
-        { timeout: 90000 }
-      );
+  if (!apifyToken || apifyToken.trim() === "") {
+    throw new Error(
+      "APIFY_TOKEN is not configured on the server. Please set APIFY_TOKEN in your deployment environment."
+    );
+  }
 
-      const items = Array.isArray(res.data) ? res.data : [];
-      const reviews = items
-        .filter((it) => it.reviewDescription || it.reviewTitle)
-        .map((it) => {
-          const text = it.reviewTitle
-            ? `${it.reviewTitle}. ${it.reviewDescription || ""}`.trim()
-            : it.reviewDescription || "";
-          return toUnified("amazon", {
-            rating: it.ratingScore,
-            text,
-            date: it.date,
-            verified: !!it.isVerified,
-            author: it.userName || it.userId || null,
-          });
-        });
+  // Normalize URL to standard product format if possible
+  const asinMatch = url.match(/(?:dp|gp\/product|product-reviews)\/([A-Z0-9]{10})/i);
+  const targetUrl = asinMatch
+    ? url.replace(/\/product-reviews\/([A-Z0-9]{10}).*/, "/dp/$1")
+    : url;
 
-      if (reviews.length > 0) {
-        const first = items[0] || {};
-        return {
-          meta: {
-            title: first.productTitle || "Amazon Product",
-            rating: first.totalCategoryRatings ? first.ratingScore : null,
-            asin: first.productAsin,
-            source: "apify_amazon",
-          },
-          reviews,
-          note: "Extracted via Apify proxy network to bypass cloud datacenter anti-bot restrictions.",
-        };
-      }
-    } catch (apifyErr) {
-      console.error("Apify Amazon fallback failed:", apifyErr.response?.data || apifyErr.message);
+  console.log(`[Amazon Apify] Primary call for: ${targetUrl}`);
+
+  // Set memory=1024 to stay well within Apify concurrent memory limits and conserve compute units
+  const endpoint = `https://api.apify.com/v2/acts/junglee~amazon-reviews-scraper/run-sync-get-dataset-items?token=${apifyToken}&memory=1024`;
+  const body = {
+    productUrls: [{ url: targetUrl }],
+    maxReviews: 20,
+    sort: "helpful",
+  };
+
+  const response = await axios.post(endpoint, body, { timeout: 120_000 });
+  const items = Array.isArray(response.data) ? response.data : [];
+
+  if (items.length === 0) {
+    throw new Error("No reviews returned from Amazon for this product URL.");
+  }
+
+  // Deduplicate and cap strictly at 20 reviews (min/max bound: 20)
+  const seen = new Set();
+  const validItems = [];
+  for (const item of items) {
+    const key = item.reviewId || item.reviewDescription || item.reviewTitle;
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      validItems.push(item);
     }
   }
 
-  return { meta: { url, source: "amazon" }, reviews: [] };
+  const boundedItems = validItems.slice(0, 20);
+
+  const reviews = boundedItems
+    .filter((it) => it.reviewDescription || it.reviewTitle)
+    .map((it) => {
+      const text = it.reviewTitle
+        ? `${it.reviewTitle}. ${it.reviewDescription || ""}`.trim()
+        : it.reviewDescription || "";
+      return toUnified("amazon", {
+        rating: it.ratingScore,
+        text,
+        date: it.date,
+        verified: !!it.isVerified,
+        author: it.userName || it.userId || null,
+      });
+    });
+
+  const first = boundedItems[0] || {};
+  return {
+    meta: {
+      title: first.productTitle || "Amazon Product",
+      rating: first.totalCategoryRatings ? first.ratingScore : null,
+      asin: first.productAsin || (asinMatch ? asinMatch[1] : null),
+      source: "apify_amazon",
+      requestedCount: 20,
+    },
+    count: reviews.length,
+    reviews,
+    note: "Extracted via Apify Amazon Review Scraper (residential proxies).",
+  };
 }
 
-// ── Route ────────────────────────────────────────────────────
+// ── Route: Fetch Reviews ──────────────────────────────────────
 app.post("/api/fetch-reviews", async (req, res) => {
   const { input, domain: domainOverride } = req.body || {};
-  if (!input || typeof input !== "string") {
+  if (!input || typeof input !== "string" || !input.trim()) {
     return res.status(400).json({ error: 'Missing "input" (a URL or business name).' });
   }
 
   const domain = detectDomain(input, domainOverride);
 
-  // Only restaurant lookups accept business names (Yelp search); other domains need a page URL.
-  const isUrl = /^https?:\/\//i.test(input.trim());
-  if (!isUrl && domain !== "restaurant") {
-    return res.status(400).json({
-      domain,
-      error: `"${input}" is not a URL. Paste the full page link (https://...), or choose the Restaurant domain to search by name.`,
-    });
-  }
-
   try {
     let result;
 
-    if (domain === "restaurant") {
-      result = await fetchYelp(input);
-    } else if (domain === "travel") {
-      if (/tripadvisor\./i.test(input)) {
-        // TripAdvisor needs longer wait time and specific extractor
-        result = await scrapeWithExtractor(input, extractTripAdvisor, "tripadvisor", 3000);
-      } else {
-        // Other travel sites (Booking, Expedia, etc.) — longer wait for lazy-loading
-        result = await scrapeWithExtractor(input, null, "travel", 2000);
-      }
-    } else if (/amazon\./i.test(input)) {
+    if (/amazon\./i.test(input)) {
       result = await fetchAmazonReviews(input);
-    } else if (/flipkart\.com/i.test(input)) {
-      result = await scrapeWithExtractor(input, extractFlipkart, "flipkart");
+    } else if (domain === "restaurant") {
+      result = await fetchYelp(input);
     } else {
-      result = await scrapeGeneric(input, "ecommerce");
+      return res.status(400).json({
+        domain,
+        error:
+          "Automated review extraction is supported for Amazon URLs and Yelp. For other platforms, please copy and paste the reviews directly into the 'Paste Reviews' tab, or use the 'Search Place' tab for Google Maps reviews.",
+        suggestion: 'Try pasting the reviews directly in the "Paste Reviews" tab instead.',
+      });
     }
 
     if (!result.reviews || result.reviews.length === 0) {
       return res.status(404).json({
         domain,
-        error:
-          "No reviews could be extracted from this page. The site may require login, use heavy anti-bot protection, or load reviews in a way this scraper can't reach.",
+        error: "No reviews could be extracted from this product page.",
         suggestion: 'Try pasting the reviews directly in the "Paste Reviews" tab instead.',
       });
     }
@@ -349,21 +276,16 @@ app.post("/api/fetch-reviews", async (req, res) => {
       reviews: result.reviews,
     });
   } catch (err) {
-    console.error("fetch-reviews error:", err);
-    const hint = /executable doesn't exist|playwright install/i.test(err.message)
-      ? ' Run "npx playwright install chromium" inside the server/ folder, then restart the server.'
-      : "";
-    res.status(500).json({ domain, error: `${err.message}${hint}` });
+    console.error("fetch-reviews error:", err.message);
+    res.status(500).json({ domain, error: err.message });
   }
 });
 
 // ════════════════════════════════════════════════════════════
 // SaarMind — Google Maps Reviews via Apify
-// Handles TRAVEL and RESTAURANT domains only.
-// E-commerce / Amazon pipeline above is completely untouched.
+// Handles TRAVEL and RESTAURANT domains.
 // ════════════════════════════════════════════════════════════
 
-/** Keyword sets used to classify a place name into a domain */
 const SAARMING_RESTAURANT_KW = [
   "cafe", "café", "bar", "dhaba", "bistro", "food", "dining", "eatery",
   "bakery", "pizzeria", "brewery", "kitchen", "restaurant", "grill",
@@ -378,33 +300,19 @@ const SAARMING_TRAVEL_KW = [
   "waterfall", "valley", "island", "resort", "campsite", "glamping",
 ];
 
-/**
- * Detect SaarMind domain from the place name string.
- * Returns "restaurant" | "hotel" (maps to travel schema).
- */
 function saarmingDetectDomain(placeName, apifyCategory) {
   const lower = (placeName + " " + (apifyCategory || "")).toLowerCase();
-
   const restScore = SAARMING_RESTAURANT_KW.filter((kw) => lower.includes(kw)).length;
   const travScore = SAARMING_TRAVEL_KW.filter((kw) => lower.includes(kw)).length;
-
-  if (restScore === 0 && travScore === 0) return "restaurant"; // default guess
+  if (restScore === 0 && travScore === 0) return "restaurant";
   return restScore >= travScore ? "restaurant" : "hotel";
 }
 
-/**
- * Build a Google Maps search URL from a free-text place name.
- * "Truffles Koramangala Bangalore" → https://www.google.com/maps/search/Truffles+Koramangala+Bangalore
- */
 function buildGoogleMapsUrl(placeName) {
   const encoded = placeName.trim().replace(/\s+/g, "+");
   return `https://www.google.com/maps/search/${encoded}`;
 }
 
-/**
- * Normalize a single Apify review item into the SaarMind unified schema.
- * Filters out reviews with no text.
- */
 function normalizeSaarmingReview(r) {
   const text = (r.text || "").trim();
   if (!text) return null;
@@ -415,12 +323,10 @@ function normalizeSaarmingReview(r) {
   const ageMs = reviewDate ? now - reviewDate : Infinity;
   const ageMonths = ageMs / (1000 * 60 * 60 * 24 * 30);
 
-  // Recency weight: last 3 months = 3x, last 6 months = 2x, older = 1x
   let recencyWeight = 1.0;
   if (ageMonths <= 3) recencyWeight = 3.0;
   else if (ageMonths <= 6) recencyWeight = 2.0;
 
-  // Credibility: reviewer has >10 reviews = experienced
   const credibility = (r.reviewerNumberOfReviews || 0) > 10 ? "experienced" : "new";
 
   return {
@@ -428,46 +334,32 @@ function normalizeSaarmingReview(r) {
     rating: r.stars || null,
     text,
     date,
-    credibility,
-    helpfulness: r.likesCount || 0,
+    verified: false,
+    author: r.name || null,
     recencyWeight,
-    ageMonths,
-    // Fields needed by the existing Gemini pipeline
-    verified: credibility === "experienced",
-    author: null,
-    year: reviewDate ? reviewDate.getFullYear() : null,
-    lang: "en",
+    credibility,
+    ageMonths: isFinite(ageMonths) ? Math.round(ageMonths) : null,
   };
 }
 
-/**
- * Compute the SaarMind sentiment trend by comparing
- * average rating of reviews ≤3 months old vs older ones.
- */
 function computeSaarmingTrend(reviews) {
-  const recent = reviews.filter((r) => r.ageMonths <= 3 && r.rating);
-  const older  = reviews.filter((r) => r.ageMonths > 3  && r.rating);
+  const dated = reviews.filter((r) => r.ageMonths !== null && r.rating !== null);
+  if (dated.length < 4) return "stable";
 
-  if (recent.length === 0) return { trend: "stable", label: "➡️ Stable", reason: "Insufficient recent data to detect a trend." };
+  const recent = dated.filter((r) => r.ageMonths <= 6);
+  const older  = dated.filter((r) => r.ageMonths > 6);
 
-  const avgRecent = recent.reduce((s, r) => s + r.rating, 0) / recent.length;
+  if (recent.length === 0 || older.length === 0) return "stable";
 
-  if (older.length === 0) return { trend: "stable", label: "➡️ Stable", reason: "Only recent reviews available — no baseline to compare against." };
+  const recentAvg = recent.reduce((s, r) => s + r.rating, 0) / recent.length;
+  const olderAvg  = older.reduce((s, r) => s + r.rating, 0) / older.length;
+  const diff = recentAvg - olderAvg;
 
-  const avgOlder  = older.reduce((s, r) => s + r.rating, 0) / older.length;
-  const delta     = avgRecent - avgOlder;
-
-  if (delta >= 0.4)  return { trend: "improving", label: "📈 Improving", reason: `Average rating rose from ${avgOlder.toFixed(1)} → ${avgRecent.toFixed(1)} in the last 3 months.` };
-  if (delta <= -0.4) return { trend: "declining", label: "📉 Declining", reason: `Average rating dropped from ${avgOlder.toFixed(1)} → ${avgRecent.toFixed(1)} in the last 3 months.` };
-  return { trend: "stable", label: "➡️ Stable", reason: `Rating consistent at ~${avgRecent.toFixed(1)} — no significant shift detected.` };
+  if (diff >= 0.4)  return "improving";
+  if (diff <= -0.4) return "declining";
+  return "stable";
 }
 
-/**
- * Compute SaarMind confidence tier.
- * High  = 15+ reviews, majority recent
- * Medium = 8–14 reviews or mixed recency
- * Low   = <8 reviews or mostly old data
- */
 function computeSaarmingConfidence(reviews) {
   const n = reviews.length;
   const recentCount = reviews.filter((r) => r.ageMonths <= 6).length;
@@ -478,29 +370,23 @@ function computeSaarmingConfidence(reviews) {
   return "Low";
 }
 
-/**
- * Call Apify run-sync-get-dataset-items for a single place.
- * Retries once on timeout.
- */
 async function callApify(googleMapsUrl, apifyToken) {
   const endpoint = `https://api.apify.com/v2/acts/Xb8osYTtOjlsgI6k9/run-sync-get-dataset-items?token=${apifyToken}`;
   const body = {
     startUrls:    [{ url: googleMapsUrl }],
-    maxReviews:   40, // buffer so 20 non-empty reviews remain after filtering
+    maxReviews:   40,
     reviewsSort:  "newest",
     language:     "en",
     personalData: false,
   };
 
-  const tryOnce = () =>
-    axios.post(endpoint, body, { timeout: 120_000 });
+  const tryOnce = () => axios.post(endpoint, body, { timeout: 120_000 });
 
   let response;
   try {
     response = await tryOnce();
   } catch (err) {
     if (err.code === "ECONNABORTED" || err.message.includes("timeout")) {
-      // Retry once
       try {
         response = await tryOnce();
       } catch (retryErr) {
@@ -519,9 +405,6 @@ async function callApify(googleMapsUrl, apifyToken) {
   return items;
 }
 
-/**
- * Core SaarMind fetch for a single place name.
- */
 async function fetchSaarming(placeName) {
   const apifyToken = process.env.APIFY_TOKEN;
   if (!apifyToken) {
@@ -531,20 +414,14 @@ async function fetchSaarming(placeName) {
   const googleMapsUrl = buildGoogleMapsUrl(placeName);
   const items = await callApify(googleMapsUrl, apifyToken);
 
-  // Each Apify item is one Google Maps place (may have multiple reviews)
-  // Actor returns one item per review, with place fields repeated on each
   const firstItem  = items[0] || {};
   const allReviews = items.flatMap((item) => (Array.isArray(item.reviews) ? item.reviews : [item]));
-
-  // Detect domain
   const domain = saarmingDetectDomain(placeName, firstItem.categoryName || "");
 
-  // Keep only reviews with non-empty text, then take the first 20
   const validReviews = allReviews
     .filter((r) => typeof r.text === "string" && r.text.trim() !== "")
     .slice(0, 20);
 
-  // Normalize
   const normalized = validReviews
     .map(normalizeSaarmingReview)
     .filter(Boolean);
@@ -588,7 +465,6 @@ app.post("/api/saarming", async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error("saarming error:", err);
-
     if (err.message.includes("APIFY_TOKEN")) {
       return res.status(503).json({ error: err.message });
     }
@@ -616,7 +492,6 @@ app.post("/api/saarming/compare", async (req, res) => {
     }
   }
 
-  // Build winner card from successful results
   const valid = results.filter((r) => !r.error && r.meta);
   let winnerCard = null;
   if (valid.length >= 2) {

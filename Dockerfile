@@ -1,17 +1,15 @@
 # ============================================================
-# Universal Review Analyzer — Container Image for Google Cloud Run
-# Uses official Playwright image containing pre-installed Chromium
-# and all required OS system dependencies.
+# Universal Review Analyzer — Lightweight Node.js Container
+# API-driven backend: Apify + Yelp + Gemini AI
 # ============================================================
-FROM mcr.microsoft.com/playwright:v1.49.1-noble
+FROM node:20-alpine
 
 WORKDIR /app
 
 # Copy server package manifests
 COPY server/package*.json ./server/
 
-# Install dependencies (skipping playwright download as browser is pre-installed in image)
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+# Install production dependencies (lightweight, no browser binaries)
 RUN cd server && npm install --omit=dev
 
 # Copy application source files
