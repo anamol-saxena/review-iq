@@ -1,6 +1,6 @@
 # ReviewIQ — Universal Review Intelligence Copilot
 
-A single-page AI copilot that synthesizes customer reviews into honest, actionable intelligence using Google Gemini. Reviews can come from pasted text, uploaded CSV/JSON files, built-in demo datasets, Amazon product URLs (via Apify with rotating residential proxies), Yelp, or Google Maps via SaarMind (Apify).
+A single-page AI copilot that synthesizes customer reviews into honest, actionable intelligence using Google Gemini. Reviews can come from pasted text, uploaded CSV/JSON files, built-in demo datasets, Amazon product URLs (via Apify with rotating residential proxies), or Google Maps via SaarMind (Apify).
 
 The app has two parts:
 - **Frontend** (Vanilla JS, served as static assets): `index.html`, `app.js`, `styles.css`
@@ -16,7 +16,7 @@ review-iq/
 ├── styles.css            # Dark aesthetic styling, animations, and typography
 ├── config.js             # Client configuration (Gemini model, dynamic backend URL, confidence)
 ├── app.js                # UI controller: state, tabs, fetching, analysis, rendering
-├── geminiClient.js       # Client client that routes reasoning chains through backend proxy
+├── geminiClient.js       # Client that routes reasoning chains through backend proxy
 ├── domainRouter.js       # Auto-detects domain and selects category schema
 ├── confidenceEngine.js   # Scores review credibility from volume and recency
 ├── preprocessor.js       # Parses pasted text, CSV, and JSON into structured review objects
@@ -39,7 +39,6 @@ review-iq/
 - **Node.js**: v18 or newer (v20+ recommended)
 - **Google Gemini API Key**: [Get a free API key at Google AI Studio](https://aistudio.google.com/apikey)
 - **Apify API Token**: [Get an Apify token](https://console.apify.com/) (powers Amazon reviews and Google Maps SaarMind)
-- **Optional**: Yelp Fusion API key (for Yelp restaurant lookups)
 
 ---
 
@@ -67,7 +66,6 @@ Fill in your configuration:
 | `GEMINI_API_KEY` | **Yes** | Google Gemini API key used for 5-step reasoning analysis |
 | `GEMINI_MODEL` | No | Model name (default: `gemini-3.1-flash-lite`) |
 | `APIFY_TOKEN` | **Yes** | Apify token for Amazon reviews (20 reviews) and Google Maps SaarMind |
-| `YELP_API_KEY` | No | Yelp Fusion API key for restaurant lookups |
 | `PORT` | No | Server port (default: `8787`) |
 
 > [!IMPORTANT]
@@ -89,7 +87,6 @@ Visit **[http://localhost:8787](http://localhost:8787)** in your browser. The ba
 1. **Select an Input Tab**:
    - **From URL**:
      - *Amazon*: Paste any Amazon product link (`amazon.com`, `amazon.in`, etc.). Fetches up to 20 balanced reviews directly via Apify.
-     - *Yelp / Restaurants*: Search by Yelp URL or business name.
    - **Search Place (SaarMind)**:
      - Search any restaurant or hotel name for Google Maps reviews, recency weighting, and trend analysis.
      - Supports 2–3 place comparison with automated winner detection.
@@ -111,7 +108,7 @@ Visit **[http://localhost:8787](http://localhost:8787)** in your browser. The ba
 | Method | Path | Body | Description |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/analyze` | `{ "prompt": "..." }` | Proxies analysis to Gemini server-side with your `GEMINI_API_KEY` |
-| `POST` | `/api/fetch-reviews` | `{ "input": "...", "domain": "auto" }` | Direct Amazon review extraction (via Apify) and Yelp API |
+| `POST` | `/api/fetch-reviews` | `{ "input": "...", "domain": "ecommerce" }` | Direct Amazon review extraction via Apify |
 | `POST` | `/api/saarming` | `{ "placeName": "..." }` | Fetches Google Maps reviews for a place via Apify |
 | `POST` | `/api/saarming/compare` | `{ "placeNames": ["...", "..."] }` | Compares 2–3 places and determines a winner card |
 | `GET` | `/api/health` | None | Health check endpoint returning `{ "ok": true }` |

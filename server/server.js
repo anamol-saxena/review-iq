@@ -3,7 +3,6 @@
 // API-driven architecture:
 // - Amazon Reviews: Apify Amazon Reviews Scraper (rotating residential proxies)
 // - Google Maps Reviews (SaarMind): Apify Google Maps Scraper
-// - Yelp Reviews: Yelp Fusion API
 // - AI Analysis: Google Gemini Flash (Server-Side Proxy)
 //
 // Never fabricates data: returns real extracted reviews.
@@ -97,66 +96,7 @@ function detectDomain(input, manual) {
   return "ecommerce";
 }
 
-function yelpAuthHeader(apiKey) {
-  return { Authorization: `Bearer ${apiKey}` };
-}
 
-function extractYelpAlias(url) {
-  const m = url.match(/yelp\.[a-z.]+\/biz\/([^/?#]+)/i);
-  return m ? m[1] : null;
-}
-
-// ── Yelp Fusion API ───────────────────────────────────────────
-async function fetchYelp(input) {
-  const apiKey = process.env.YELP_API_KEY;
-  const alias = extractYelpAlias(input);
-
-  if (!apiKey || apiKey === "YOUR_YELP_API_KEY") {
-    throw new Error(
-      "Yelp API key is not configured. For restaurants, use the 'Search Place' (SaarMind) tab to fetch Google Maps reviews via Apify, or paste reviews directly in the 'Paste Reviews' tab."
-    );
-  }
-
-  let business;
-  if (alias) {
-    const { data } = await axios.get(`https://api.yelp.com/v3/businesses/${alias}`, {
-      headers: yelpAuthHeader(apiKey),
-    });
-    business = data;
-  } else {
-    const { data } = await axios.get("https://api.yelp.com/v3/businesses/search", {
-      headers: yelpAuthHeader(apiKey),
-      params: { term: input, location: "United States", limit: 1 },
-    });
-    business = data.businesses?.[0];
-  }
-
-  if (!business) {
-    throw new Error(`No Yelp business found for "${input}".`);
-  }
-
-  const { data: reviewData } = await axios.get(
-    `https://api.yelp.com/v3/businesses/${business.id}/reviews`,
-    { headers: yelpAuthHeader(apiKey) }
-  );
-
-  const reviews = (reviewData.reviews || []).map((r) =>
-    toUnified("yelp", {
-      rating: r.rating,
-      text: r.text,
-      date: r.time_created,
-      author: r.user?.name,
-      verified: true,
-    })
-  );
-
-  return {
-    meta: { name: business.name, rating: business.rating, reviewCount: business.review_count },
-    count: reviews.length,
-    reviews,
-    note: "Yelp official API returns a max of 3 review excerpts per business (Yelp API policy limit).",
-  };
-}
 
 // ── Amazon: Direct Apify Reviews Scraper (Primary) ─────────────
 // Uses rotating residential proxies to bypass datacenter IP bot protection.
@@ -249,13 +189,11 @@ app.post("/api/fetch-reviews", async (req, res) => {
 
     if (/amazon\./i.test(input)) {
       result = await fetchAmazonReviews(input);
-    } else if (domain === "restaurant") {
-      result = await fetchYelp(input);
     } else {
       return res.status(400).json({
         domain,
         error:
-          "Automated review extraction is supported for Amazon URLs and Yelp. For other platforms, please copy and paste the reviews directly into the 'Paste Reviews' tab, or use the 'Search Place' tab for Google Maps reviews.",
+          "Automated review extraction is supported for Amazon URLs. For restaurants or places, please use the 'Search Place' tab for Google Maps reviews, or copy and paste reviews directly into the 'Paste Reviews' tab.",
         suggestion: 'Try pasting the reviews directly in the "Paste Reviews" tab instead.',
       });
     }

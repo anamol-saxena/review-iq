@@ -1,6 +1,6 @@
 # ============================================================
 # Universal Review Analyzer — Lightweight Node.js Container
-# API-driven backend: Apify + Yelp + Gemini AI
+# API-driven backend: Apify (Amazon & Google Maps) + Gemini AI
 # ============================================================
 FROM node:20-alpine
 
