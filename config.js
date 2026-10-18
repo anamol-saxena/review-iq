@@ -8,8 +8,7 @@ const CONFIG = {
   GEMINI_MODEL: "gemini-3.1-flash-lite",
 
 
-  // Local backend that does real review fetching (headless-browser
-  // scraping + optional Yelp API). Start it from the server/ folder:
+  // Backend that provides review fetching and Gemini AI analysis:
   BACKEND_URL:
     typeof window !== "undefined" && window.location.origin && window.location.origin.startsWith("http")
       ? window.location.origin
