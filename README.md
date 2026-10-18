@@ -1,127 +1,154 @@
-# Review Analyzer
+# ReviewIQ — Universal Review Intelligence Copilot
 
-A local, single-page app that collects customer reviews and analyzes them with Google Gemini. Reviews can come from pasted text, an uploaded file, a demo dataset, a product or place URL, or SaarMind (Google Maps reviews via Apify).
+A single-page AI copilot that synthesizes customer reviews into honest, actionable intelligence using Google Gemini. Reviews can come from pasted text, uploaded CSV/JSON files, built-in demo datasets, product/place URLs (Amazon, Flipkart, TripAdvisor, Yelp), or Google Maps via SaarMind (Apify).
 
 The app has two parts:
+- **Frontend** (Vanilla JS, served as static assets): `index.html`, `app.js`, `styles.css`
+- **Backend** (Node.js + Express, port 8787): `server/` with Playwright headless scraper & secure Gemini proxy
 
-- **Frontend** (vanilla JS, served as static files): `index.html`, `app.js`, `styles.css`
-- **Backend** (Node.js + Express, port 8787): `server/`
+---
 
-## Project structure
+## Project Structure
 
 ```
-reviewAnalyzer/
-├── index.html            Single-page UI (input tabs, options, results)
-├── styles.css            Styling
-├── config.js             Frontend config (Gemini model, backend URL, confidence thresholds)
-├── app.js                UI controller: state, tabs, fetching, analysis, rendering
-├── preprocessor.js       Parses pasted text, CSV, and JSON into review objects
-├── domainRouter.js       Chooses the analysis profile for the detected domain
-├── geminiClient.js       Sends reviews to Gemini and parses the analysis
-├── confidenceEngine.js   Scores confidence from review count and recency
-├── saarmingClient.js     Frontend client for the SaarMind endpoints
-├── demoData.js           Built-in demo review scenarios
+review-iq/
+├── index.html            # Single-page UI (input tabs, domain options, verdict cards)
+├── styles.css            # Dark aesthetic styling, animations, and typography
+├── config.js             # Client configuration (Gemini model, dynamic backend URL, confidence)
+├── app.js                # UI controller: state, tabs, fetching, analysis, rendering
+├── geminiClient.js       # Client client that routes reasoning chains through backend proxy
+├── domainRouter.js       # Auto-detects domain and selects category schema
+├── confidenceEngine.js   # Scores review credibility from volume and recency
+├── preprocessor.js       # Parses pasted text, CSV, and JSON into structured review objects
+├── saarmingClient.js     # Client for Google Maps reviews endpoints
+├── demoData.js           # Built-in demo review scenarios
+├── Dockerfile            # Container definition for Google Cloud Run (Playwright base)
+├── .dockerignore         # Docker build exclusions
+├── .gitignore            # Git exclusions (protects .env and secrets)
 └── server/
-    ├── server.js         Express API: fetch-reviews, saarming, health
-    ├── scrapers.js       DOM, JSON-LD, and generic review extraction helpers
-    ├── package.json      Backend dependencies and scripts
-    └── .env              Secrets and port (not committed)
+    ├── server.js         # Express API: /api/analyze, /api/fetch-reviews, /api/saarming
+    ├── scrapers.js       # DOM, JSON-LD, Playwright, and Cheerio review extraction helpers
+    ├── package.json      # Backend dependencies and scripts
+    └── .env.example      # Environment variable template
 ```
+
+---
 
 ## Prerequisites
 
-- Node.js 18 or newer
-- A Google Gemini API key ([get one here](https://aistudio.google.com/apikey))
-- Optional: an Apify API token (for SaarMind)
-- Optional: a Yelp Fusion API key (for restaurant lookups)
+- **Node.js**: v18 or newer (v20+ recommended)
+- **Google Gemini API Key**: [Get a free API key at Google AI Studio](https://aistudio.google.com/apikey)
+- **Optional**: [Apify API token](https://console.apify.com/) (required only for SaarMind Google Maps reviews)
+- **Optional**: Yelp Fusion API key (for restaurant data without scraping)
 
-## Setup
+---
 
-### 1. Install and start the backend
+## Local Setup
+
+### 1. Install Dependencies
 
 ```bash
 cd server
-npm install        # also downloads Playwright's Chromium (postinstall)
-npm start          # runs on http://localhost:8787
+npm install        # also downloads Playwright's Chromium browser
 ```
 
-### 2. Configure the backend (`server/.env`)
+### 2. Configure Environment (`.env`)
 
-| Variable        | Required | Purpose                                                  |
-| --------------- | -------- | -------------------------------------------------------- |
-| `APIFY_TOKEN`   | For SaarMind | Apify token used to call the Google Maps reviews actor |
-| `YELP_API_KEY`  | No       | Yelp Fusion API. Without it, restaurant URLs are scraped |
-| `PORT`          | No       | Backend port. Defaults to `8787`                         |
+Create a `.env` file in the project root (or inside `server/.env`) by copying the template:
 
-### 3. Open the frontend
+```bash
+cp server/.env.example .env
+```
 
-Open `index.html` in a browser. Click the settings control and enter your Gemini API key. The key is saved in `localStorage`. You can also set `GEMINI_API_KEY` in `config.js`, but do not commit it.
+Fill in your configuration:
+
+| Variable | Required | Purpose |
+| :--- | :--- | :--- |
+| `GEMINI_API_KEY` | **Yes** | Google Gemini API key used for 5-step reasoning analysis |
+| `GEMINI_MODEL` | No | Model name (default: `gemini-3.1-flash-lite`) |
+| `APIFY_TOKEN` | For SaarMind | Apify token for Google Maps review extraction |
+| `YELP_API_KEY` | No | Yelp Fusion API key for restaurant lookups |
+| `PORT` | No | Server port (default: `8787`) |
+
+> [!IMPORTANT]
+> All API keys remain strictly on the backend. The frontend never receives or exposes your keys.
+
+### 3. Start the Server
+
+```bash
+cd server
+npm start
+```
+
+Visit **[http://localhost:8787](http://localhost:8787)** in your browser. The backend automatically serves the frontend interface.
+
+---
 
 ## Usage
 
-The input tabs in `index.html` are:
+1. **Select an Input Tab**:
+   - **Paste**: Paste raw review text directly (one per line or bulk).
+   - **From URL**:
+     - *E-commerce*: Paste an Amazon, Flipkart, or e-commerce product URL.
+     - *Place / Restaurant*: Search by name or URL (single or side-by-side comparison).
+   - **File**: Upload CSV or JSON files.
+   - **Demo**: Pick one of the built-in scenarios.
+2. **Options**: Select a domain (*Auto-Detect*, *E-Commerce*, *Electronics*, *Travel/Hotels*, or *Restaurants*) and an optional product name.
+3. **Analyze**: ReviewIQ executes the 5-step reasoning chain:
+   - **Step 1**: Atomic claim extraction
+   - **Step 2**: Theme clustering
+   - **Step 3**: Contradiction resolution
+   - **Step 4**: Recency & volume weighting
+   - **Step 5**: Honest verdict synthesis ("Choose this if... / Skip if...")
 
-- **Paste**: paste reviews, one per line or as a text block.
-- **From URL**
-  - *E-commerce*: paste a product page URL (Amazon, Flipkart, and similar sites). The backend launches a headless browser and extracts reviews.
-  - *Place / Restaurant*: search by name. Single mode analyzes one place. Compare mode compares 2 or 3 places and shows a winner card.
-- **File**: upload CSV or JSON.
-- **Demo**: pick a built-in scenario.
+---
 
-Choose a domain and an optional product name in the shared options row, then click **Analyze**. The pipeline runs in this order: fetch or parse reviews, preprocess, route by domain, analyze with Gemini, score confidence, and render results.
+## API Endpoints (Backend)
 
-## API (backend)
+| Method | Path | Body | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/analyze` | `{ "prompt": "..." }` | Proxies analysis to Gemini server-side with your `GEMINI_API_KEY` |
+| `POST` | `/api/fetch-reviews` | `{ "input": "...", "domain": "auto" }` | Headless Playwright scraper for e-commerce and travel sites |
+| `POST` | `/api/saarming` | `{ "placeName": "..." }` | Fetches Google Maps reviews for a place via Apify |
+| `POST` | `/api/saarming/compare` | `{ "placeNames": ["...", "..."] }` | Compares 2–3 places and determines a winner card |
+| `GET` | `/api/health` | None | Health check endpoint returning `{ "ok": true }` |
 
-| Method | Path                     | Body                                | Notes                                             |
-| ------ | ------------------------ | ----------------------------------- | ------------------------------------------------- |
-| POST   | `/api/fetch-reviews`     | `{ "input": "...", "domain": "auto" }` | Non-URL input is accepted only for `restaurant` |
-| POST   | `/api/saarming`          | `{ "placeName": "..." }`            | Single place via Apify                            |
-| POST   | `/api/saarming/compare`  | `{ "placeNames": ["...", "..."] }`  | 2 to 3 places                                     |
-| GET    | `/api/health`            | none                                | Returns `{ "ok": true }`                          |
-
-Errors return a JSON body with an `error` field. Status codes include 400 (bad input), 429 (compute limit), 503 (missing `APIFY_TOKEN`), and 500 (other failures).
+---
 
 ## Deploy to Google Cloud (Cloud Run)
 
-The application includes a `Dockerfile` using the official Playwright base image (pre-configured with Chromium and Linux system libraries) and is ready for Google Cloud Run:
+The repository includes a production-ready `Dockerfile` based on Microsoft's official Playwright container (Ubuntu Noble + pre-installed Chromium and rendering libraries).
 
-1. **Install Google Cloud SDK** (if not already installed):
-   ```bash
-   brew install --cask google-cloud-sdk
-   ```
+### 1. Authenticate with Google Cloud
 
-2. **Authenticate and set your GCP Project**:
-   ```bash
-   gcloud auth login
-   gcloud config set project YOUR_GCP_PROJECT_ID
-   ```
+```bash
+gcloud auth login
+gcloud config set project YOUR_GCP_PROJECT_ID
+```
 
-3. **Deploy to Cloud Run**:
-   ```bash
-   gcloud run deploy review-analyzer \
-     --source . \
-     --region us-central1 \
-     --allow-unauthenticated \
-     --memory 2Gi \
-     --cpu 2 \
-     --set-env-vars GEMINI_API_KEY="your_gemini_key",APIFY_TOKEN="your_apify_token"
-   ```
+### 2. Deploy from Source
 
+```bash
+gcloud run deploy review-analyzer \
+  --source . \
+  --region us-central1 \
+  --platform managed \
+  --allow-unauthenticated \
+  --memory 2Gi \
+  --cpu 2 \
+  --set-env-vars GEMINI_API_KEY="your_gemini_key",APIFY_TOKEN="your_apify_token"
+```
 
-## Notes
+Cloud Run will build the container in Google Cloud Build, allocate 2 vCPUs and 2 GiB RAM, and output your live HTTPS URL.
 
-- The backend never fabricates reviews. If nothing can be extracted, it returns an error.
-- SaarMind requests use one Apify run per place. Each run returns up to 40 reviews, and the backend keeps the first 20 that have non-empty text.
-- Confidence levels depend on review count and the share of recent reviews. Thresholds are in `config.js`.
-- The backend has no hot reload. Restart `npm start` after editing `server/` files.
-- If the backend port is already in use, stop the old process first (`lsof -nP -iTCP:8787 -sTCP:LISTEN`). A stale process can mask startup errors.
+---
 
 ## Troubleshooting
 
-| Symptom                                   | Likely cause                                                  |
-| ----------------------------------------- | ------------------------------------------------------------- |
-| "Can't reach the backend"                 | Backend not running. Run `npm start` in `server/`.            |
-| "Backend returned 404"                    | Another process holds port 8787. Stop it and restart.         |
-| "is not a URL"                            | Non-URL input on a non-restaurant domain. Paste the full link. |
-| SaarMind returns 503                      | `APIFY_TOKEN` missing from `server/.env`.                     |
-| SaarMind "No reviews found"               | Try a more specific name with the city.                       |
+| Symptom | Cause | Solution |
+| :--- | :--- | :--- |
+| `Can't reach the backend` | Server is not running | Run `npm start` in `server/` |
+| `Gemini API key is not configured` | Missing `GEMINI_API_KEY` | Add your key to `.env` and restart the server |
+| `Chromium executable doesn't exist` | Playwright browser not installed | Run `npx playwright install chromium` in `server/` |
+| `SaarMind returns 503` | Missing `APIFY_TOKEN` | Add your Apify token to `.env` |
+| `Port already in use` | Another process holds port 8787 | Run `lsof -nP -iTCP:8787 -sTCP:LISTEN` and kill the PID |
